@@ -89,6 +89,11 @@ function launch {
     agnos_init
   fi
 
+  # 준파일럿: 복구 서버 (본체가 망가져도 휴대폰으로 되살릴 수 있게 빌드/매니저보다 먼저 실행)
+  if [ -f /AGNOS ] && ! pgrep -f "openpilot/junpilot/recovery.py" > /dev/null; then
+    (python3 "$DIR/openpilot/junpilot/recovery.py" > /tmp/junpilot_recovery.log 2>&1 &)
+  fi
+
   # write tmux scrollback to a file
   tmux capture-pane -pq -S-1000 > /tmp/launch_log
 

@@ -317,7 +317,18 @@ def main():
   httpd = ThreadingHTTPServer(("0.0.0.0", PORT), make_handler(app))
   threading.Thread(target=httpd.serve_forever, daemon=True).start()
   was_onroad = app.dev.is_onroad()
+  started = time.monotonic()
+  recorded = False
   while True:
+    if not recorded and time.monotonic() - started > 120:
+      # 2분 이상 정상 동작한 버전은 복구 서버의 '되돌리기' 목록에 기록
+      try:
+        from openpilot.common.basedir import BASEDIR
+        from openpilot.junpilot.recovery import record_good_commit
+        record_good_commit(op_dir=BASEDIR, data_dir=store.data_dir())
+      except Exception:
+        pass
+      recorded = True
     onroad = app.dev.is_onroad()
     if was_onroad and not onroad:
       app.new_code()  # 시동 끌 때마다 새 코드를 잠시 표시
