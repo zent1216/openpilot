@@ -45,6 +45,11 @@ class Api:
 
 
 def api_get(endpoint, method='GET', timeout=None, access_token=None, session=None, **params):
+  from openpilot.junpilot import OFFLINE
+  if OFFLINE:
+    # 준파일럿: 콤마 서버 통신 차단. 호출부는 기존 네트워크 오류 처리 경로를 그대로 탄다.
+    raise requests.exceptions.ConnectionError("junpilot offline: comma server access disabled")
+
   headers = {}
   if access_token is not None:
     headers['Authorization'] = "JWT " + access_token
