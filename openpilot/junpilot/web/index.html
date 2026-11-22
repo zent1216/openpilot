@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>준파일럿</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#262a33; --text:#e8eaee; --dim:#8b92a0; --acc:#ff8a3d; --ok:#3ecf8e; --bad:#ff5d5d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
+  header { position:sticky; top:0; background:var(--bg); padding:14px 16px 0; z-index:2; }
+  h1 { margin:0 0 10px; font-size:20px; letter-spacing:-.3px; }
+  h1 b { color:var(--acc); }
+  nav { display:flex; gap:6px; border-bottom:1px solid var(--line); }
+  nav button { flex:1; background:none; border:0; color:var(--dim); padding:10px 0; font-size:15px; border-bottom:2px solid transparent; }
+  nav button.on { color:var(--text); border-color:var(--acc); }
+  main { padding:14px 16px 40px; max-width:720px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .card h2 { font-size:14px; color:var(--dim); margin:0 0 10px; font-weight:600; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 0; border-top:1px solid var(--line); }
+  .row:first-of-type { border-top:0; }
+  .k { color:var(--dim); } .v { text-align:right; word-break:break-all; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; background:#2a2f3a; color:var(--dim); }
+  .pill.ok { background:#163a2b; color:var(--ok); } .pill.bad { background:#3d1c1c; color:var(--bad); } .pill.acc { background:#3d2616; color:var(--acc); }
+  button.b { background:var(--acc); color:#1a1205; border:0; border-radius:10px; padding:11px 14px; font-weight:700; font-size:15px; width:100%; }
+  button.b.ghost { background:#262a33; color:var(--text); font-weight:600; }
+  button.b:disabled { opacity:.45; }
+  input, select, textarea { width:100%; background:#0f1115; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:16px; }
+  label.t { display:block; color:var(--dim); font-size:13px; margin:10px 0 4px; }
+  .sw { position:relative; width:46px; height:28px; flex:none; }
+  .sw input { opacity:0; width:0; height:0; }
+  .sw span { position:absolute; inset:0; background:#333845; border-radius:99px; transition:.15s; }
+  .sw span:before { content:""; position:absolute; width:22px; height:22px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.15s; }
+  .sw input:checked + span { background:var(--acc); } .sw input:checked + span:before { transform:translateX(18px); }
+  .msg { padding:10px 12px; border-radius:8px; margin-bottom:12px; font-size:14px; }
+  .msg.err { background:#3d1c1c; color:#ffb3b3; } .msg.ok { background:#163a2b; color:#9ff0c9; } .msg.info { background:#262a33; color:var(--dim); }
+  .route { padding:10px 0; border-top:1px solid var(--line); }
+  .route:first-of-type { border-top:0; }
+  .route .top { display:flex; justify-content:space-between; gap:8px; }
+  .route .name { font-family:ui-monospace, monospace; font-size:13px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  .bar { height:8px; background:#262a33; border-radius:99px; overflow:hidden; margin:8px 0; }
+  .bar i { display:block; height:100%; background:var(--acc); width:0; transition:width .3s; }
+  .code { font-size:32px; letter-spacing:10px; text-align:center; font-family:ui-monospace, monospace; }
+  .hidden { display:none !important; }
+  small { color:var(--dim); }
+  .fw { font-family:ui-monospace, monospace; font-size:12px; color:var(--dim); white-space:pre-wrap; word-break:break-all; }
+</style>
+</head>
+<body>
+<header>
+  <h1><b>준</b>파일럿 관리</h1>
+  <nav id="nav" class="hidden">
+    <button data-tab="status" class="on">상태</button>
+    <button data-tab="routes">주행기록</button>
+    <button data-tab="settings">설정</button>
+    <button data-tab="link">연결</button>
+  </nav>
+</header>
+<main>
+  <div id="msg"></div>
+
+  <!-- 페어링 -->
+  <section id="pair" class="hidden">
+    <div class="card">
+      <h2>기기 연결</h2>
+      <p>콤마4 화면 알림에 뜬 <b>6자리 페어링 코드</b>를 입력해. 한 번 연결하면 다음부터는 자동으로 들어와져.</p>
+      <input id="code" class="code" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code">
+      <label class="t">이 기기 이름 (선택)</label>
+      <input id="devname" placeholder="예: 내 휴대폰">
+      <div style="height:10px"></div>
+      <button class="b" onclick="pair()">연결하기</button>
+      <div style="height:8px"></div>
+      <button class="b ghost" onclick="showCode()">장치 화면에 코드 다시 표시</button>
+      <p><small>코드는 시동을 끈 뒤 10분 동안 표시돼. 주행 중에는 연결할 수 없어.</small></p>
+    </div>
+  </section>
+
+  <!-- 상태 -->
+  <section id="tab-status" class="hidden">
+    <div class="card"><h2>장치</h2><div id="st-dev"></div></div>
+    <div class="card"><h2>차량</h2><div id="st-car"></div></div>
+    <div class="card">
+      <h2>업데이트</h2>
+      <div id="st-upd"></div>
+      <div class="grid2">
+        <button class="b ghost" onclick="post('/api/update/check').then(()=>note('업데이트 확인을 요청했어. 잠시 뒤 새로고침해 줘.','ok'))">업데이트 확인</button>
+        <button class="b ghost" onclick="reboot()">재부팅</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 주행기록 -->
+  <section id="tab-routes" class="hidden">
+    <div class="card" id="job-card">
+      <h2>전송 상태</h2>
+      <div id="job"><small>진행 중인 전송 없음</small></div>
+    </div>
+    <div class="card">
+      <h2>주행기록</h2>
+      <label class="t">함께 보낼 것</label>
+      <div class="grid2">
+        <label class="row" style="border:0"><span>요약 로그 (qlog)</span><span class="sw"><input type="checkbox" id="k-qlog" checked><span></span></span></label>
+        <label class="row" style="border:0"><span>원본 로그 (rlog)</span><span class="sw"><input type="checkbox" id="k-rlog"><span></span></span></label>
+        <label class="row" style="border:0"><span>저화질 영상</span><span class="sw"><input type="checkbox" id="k-qcamera"><span></span></span></label>
+      </div>
+      <label class="t">메모 (증상, 상황)</label>
+      <textarea id="note" rows="2" placeholder="예: 고속도로 커브에서 핸들이 흔들림"></textarea>
+      <div id="routes" style="margin-top:10px"><small>불러오는 중…</small></div>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <section id="tab-settings" class="hidden">
+    <div id="set-onroad" class="msg info hidden">주행 중에는 설정을 바꿀 수 없어. 시동을 끈 뒤 바꿔 줘.</div>
+    <div class="card"><h2>기본 설정</h2><div id="set-official"></div></div>
+    <div class="card"><h2>준파일럿 크루즈 <span class="pill acc">준비 중</span></h2>
+      <p><small>레이더 트랙 기능이 들어가면 적용돼. 지금은 값만 저장돼.</small></p>
+      <div id="set-jun"></div>
+    </div>
+    <button class="b" id="save-btn" onclick="saveSettings()">저장하고 장치에 반영</button>
+  </section>
+
+  <!-- 연결 -->
+  <section id="tab-link" class="hidden">
+    <div class="card">
+      <h2>구글 드라이브 연결</h2>
+      <p><small>Apps Script 수신기 주소와 비밀값을 넣어 줘. 설치 방법은 저장소의 <b>openpilot/junpilot/apps_script/설치방법.md</b> 참고.</small></p>
+      <label class="t">웹앱 주소</label>
+      <input id="drv-url" placeholder="https://script.google.com/macros/s/…/exec">
+      <label class="t">비밀값 (Code.gs의 SECRET과 같게)</label>
+      <input id="drv-secret" placeholder="비밀값">
+      <div style="height:10px"></div>
+      <button class="b" onclick="saveDrive()">저장</button>
+    </div>
+    <div class="card">
+      <h2>이 기기</h2>
+      <button class="b ghost" onclick="unpair()">이 기기 연결 해제</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+let tab = 'status', settings = null, routeTimer = null;
+
+function note(text, kind='err') { $('#msg').innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : ''; if (text) window.scrollTo(0,0); }
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function size(n) { return n > 1e9 ? (n/1e9).toFixed(1)+'GB' : n > 1e6 ? (n/1e6).toFixed(0)+'MB' : (n/1e3).toFixed(0)+'KB'; }
+function when(t) { const d = new Date(t*1000); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function row(k, v) { return `<div class="row"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`; }
+
+async function api(path, opt={}) {
+  const r = await fetch(path, {credentials:'same-origin', ...opt});
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401) { showPair(); throw new Error('페어링 필요'); }
+  if (!r.ok) throw new Error(j.error || ('오류 ' + r.status));
+  return j;
+}
+const post = (path, body={}) => api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).catch(e => { note(e.message); throw e; });
+
+function showPair() { $('#pair').classList.remove('hidden'); $('#nav').classList.add('hidden'); document.querySelectorAll('section[id^=tab-]').forEach(s => s.classList.add('hidden')); }
+async function pair() {
+  try { await post('/api/pair', {code: $('#code').value, name: $('#devname').value}); note('연결됐어.', 'ok'); start(); } catch {}
+}
+async function showCode() { try { const j = await post('/api/show_code'); note(j.pairing ? '장치 화면을 확인해 줘.' : '주행 중에는 코드를 표시할 수 없어.', j.pairing ? 'info' : 'err'); } catch {} }
+
+function go(t) {
+  tab = t;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  document.querySelectorAll('section[id^=tab-]').forEach(s => s.classList.toggle('hidden', s.id !== 'tab-' + t));
+  clearInterval(routeTimer);
+  if (t === 'status') loadStatus();
+  if (t === 'routes') { loadRoutes(); loadJob(); routeTimer = setInterval(loadJob, 2000); }
+  if (t === 'settings') loadSettings();
+}
+document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { note(''); go(b.dataset.tab); });
+
+async function loadStatus() {
+  const s = await api('/api/status');
+  const d = s.device;
+  $('#st-dev').innerHTML = row('상태', s.onroad ? '<span class="pill acc">주행 중</span>' : '<span class="pill">정차</span>')
+    + row('버전', esc(d.Version)) + row('브랜치', esc(d.GitBranch)) + row('커밋', esc((d.GitCommit||'').slice(0,8)))
+    + row('구글 드라이브', s.drive.configured ? '<span class="pill ok">연결됨</span>' : '<span class="pill bad">미설정</span>');
+  const c = d.car;
+  $('#st-car').innerHTML = !c ? '<small>아직 차량 정보 없음. 차에 연결하고 시동을 한 번 켜 줘.</small>'
+    : row('차종', esc(c.fingerprint)) + row('인식 방식', esc(c.fingerprintSource)) + row('차대번호', esc(c.vin))
+      + `<details style="margin-top:8px"><summary class="k">펌웨어 값 (${c.fw.length}개)</summary><div class="fw">${c.fw.map(f => esc(`${f.ecu} 0x${f.address.toString(16)}${f.subAddress?'/'+f.subAddress:''}  ${f.version}`)).join('\n')}</div></details>`;
+  $('#st-upd').innerHTML = row('상태', esc(d.UpdaterState || '-')) + row('현재', esc(d.UpdaterCurrentDescription || '-'))
+    + (d.UpdateAvailable ? row('새 버전', `<span class="pill ok">${esc(d.UpdaterNewDescription)}</span>`) : '');
+}
+
+async function loadRoutes() {
+  const {routes} = await api('/api/routes');
+  if (!routes.length) { $('#routes').innerHTML = '<small>저장된 주행기록이 없어.</small>'; return; }
+  $('#routes').innerHTML = routes.map(r => `
+    <div class="route">
+      <div class="top"><span class="name">${esc(r.route)}</span><span class="k">${when(r.mtime)}</span></div>
+      <small>${r.segments.length}구간 · ${size(r.size)} · ${r.kinds.map(k => ({qlog:'요약',rlog:'원본',qcamera:'영상'}[k])).join(', ')}</small>
+      <div class="grid2"><button class="b" onclick="send('${esc(r.route)}')">드라이브로 보내기</button>
+      <button class="b ghost" onclick="dl('${esc(r.route)}', ${r.segments[0]})">첫 구간 요약 받기</button></div>
+    </div>`).join('');
+}
+function dl(route, seg) { location.href = `/api/download/${encodeURIComponent(route)}/${seg}/qlog`; }
+async function send(route) {
+  const kinds = ['qlog','rlog','qcamera'].filter(k => $('#k-'+k).checked);
+  if (!kinds.length) return note('보낼 것을 하나 이상 골라 줘.');
+  try { await post('/api/send', {route, kinds, note: $('#note').value}); note('전송을 시작했어.', 'ok'); loadJob(); } catch {}
+}
+async function loadJob() {
+  const {job} = await api('/api/job');
+  if (!job) return;
+  const cls = job.state === '완료' ? 'ok' : job.state === '실패' ? 'bad' : 'acc';
+  $('#job').innerHTML = `<div class="top" style="display:flex;justify-content:space-between"><span class="name" style="font-size:12px">${esc(job.bundle)}</span><span class="pill ${cls}">${esc(job.state)}</span></div>
+    <div class="bar"><i style="width:${job.progress}%"></i></div><small>${job.progress}% · 파일 ${job.files.length}개</small>
+    ${job.error ? `<div class="msg err" style="margin-top:8px">${esc(job.error)}</div>` : ''}
+    ${job.state === '완료' ? '<div class="msg ok" style="margin-top:8px">Claude에게 "로그 올렸어"라고 말해 줘.</div>' : ''}`;
+}
+
+function control(group, key, spec) {
+  const id = `${group}-${key}`;
+  if (spec.type === 'bool')
+    return `<label class="row"><span>${esc(spec.label)}</span><span class="sw"><input type="checkbox" id="${id}" ${spec.value ? 'checked' : ''}><span></span></span></label>`;
+  let opts;
+  if (spec.type === 'choice_str') opts = Object.entries(spec.choices).map(([v, l]) => `<option value="${v}" ${v === spec.value ? 'selected' : ''}>${esc(l)}</option>`);
+  else if (spec.type === 'choice') opts = spec.choices.map((l, i) => `<option value="${i}" ${i === spec.value ? 'selected' : ''}>${esc(l)}</option>`);
+  else { opts = []; for (let i = spec.min; i <= spec.max; i++) opts.push(`<option value="${i}" ${i === spec.value ? 'selected' : ''}>${i}</option>`); }
+  return `<div class="row"><span>${esc(spec.label)}</span><select id="${id}" style="width:auto">${opts.join('')}</select></div>`;
+}
+async function loadSettings() {
+  settings = await api('/api/settings');
+  $('#set-onroad').classList.toggle('hidden', !settings.onroad);
+  $('#save-btn').disabled = settings.onroad;
+  $('#set-official').innerHTML = Object.entries(settings.official).map(([k, s]) => control('o', k, s)).join('');
+  $('#set-jun').innerHTML = Object.entries(settings.junpilot).map(([k, s]) => control('j', k, s)).join('');
+}
+function read(group, key, spec) {
+  const el = $(`#${group}-${key}`);
+  if (spec.type === 'bool') return el.checked;
+  if (spec.type === 'choice_str') return el.value;
+  return parseInt(el.value, 10);
+}
+async function saveSettings() {
+  const body = {official:{}, junpilot:{}};
+  for (const [k, s] of Object.entries(settings.official)) { const v = read('o', k, s); if (v !== s.value) body.official[k] = v; }
+  for (const [k, s] of Object.entries(settings.junpilot)) { const v = read('j', k, s); if (v !== s.value) body.junpilot[k] = v; }
+  if (!Object.keys(body.official).length && !Object.keys(body.junpilot).length) return note('바뀐 값이 없어.', 'info');
+  try { await post('/api/settings', body); note('저장해서 장치에 반영했어.', 'ok'); loadSettings(); } catch {}
+}
+async function saveDrive() {
+  try { await post('/api/drive', {url: $('#drv-url').value, secret: $('#drv-secret').value}); note('구글 드라이브 연결을 저장했어.', 'ok'); } catch {}
+}
+async function reboot() { if (confirm('장치를 재부팅할까?')) { try { await post('/api/reboot'); note('재부팅 중…', 'info'); } catch {} } }
+async function unpair() { if (confirm('이 기기 연결을 해제할까?')) { try { await post('/api/unpair'); showPair(); } catch {} } }
+
+async function start() {
+  const p = await fetch('/api/ping').then(r => r.json()).catch(() => ({}));
+  if (!p.paired) return showPair();
+  $('#pair').classList.add('hidden'); $('#nav').classList.remove('hidden');
+  go(tab);
+}
+start();
+</script>
+</body>
+</html>

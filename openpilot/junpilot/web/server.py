@@ -1,0 +1,330 @@
+#!/usr/bin/env python3
+"""준파일럿 관리 페이지 서버.
+
+- 같은 와이파이/핫스팟의 휴대폰·노트북에서 http://<장치 IP>:8082 로 접속
+- 장치 화면에 뜬 6자리 페어링 코드로 한 번 연결하면 이후 자동 접속
+- 사설망(192.168.x, 10.x, 172.16~31.x) 주소에서 온 요청만 받는다
+"""
+import hmac
+import ipaddress
+import json
+import os
+import secrets
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, unquote
+
+from openpilot.junpilot import store, drive
+from openpilot.junpilot.device import OFFICIAL_SETTINGS
+
+PORT = int(os.getenv("JUNPILOT_PORT", "8082"))
+PAIR_WINDOW = 10 * 60  # 페어링 코드 표시 시간(초)
+MAX_FAILS = 5
+LOCK_TIME = 60
+COOKIE = "junpilot_token"
+INDEX_HTML = os.path.join(os.path.dirname(__file__), "index.html")
+ROUTE_FILES = {"qlog": ("qlog.zst", "qlog"), "rlog": ("rlog.zst", "rlog"), "qcamera": ("qcamera.ts",)}
+
+
+class App:
+  def __init__(self, device, clock=time.monotonic):
+    self.dev = device
+    self.clock = clock
+    self.lock = threading.Lock()
+    self.code = ""
+    self.code_until = 0.0
+    self.fails = 0
+    self.locked_until = 0.0
+    self.job: drive.UploadJob | None = None
+    self._last_alert: str | None = None
+    self.new_code()
+
+  # ---- 페어링 ----
+  def tokens(self) -> dict:
+    return store.load("tokens.json", {})
+
+  def new_code(self):
+    with self.lock:
+      self.code = f"{secrets.randbelow(1_000_000):06d}"
+      self.code_until = self.clock() + PAIR_WINDOW
+      self.fails = 0
+
+  def pairing_active(self) -> bool:
+    return self.clock() < self.code_until and not self.dev.is_onroad()
+
+  def pair(self, code: str, name: str) -> str:
+    with self.lock:
+      now = self.clock()
+      if now < self.locked_until:
+        raise PermissionError(f"시도가 너무 많음. {int(self.locked_until - now)}초 뒤 다시 시도")
+      if not self.pairing_active():
+        raise PermissionError("페어링 시간이 아님. '코드 다시 표시'를 누르고 장치 화면을 확인")
+      if not hmac.compare_digest(code.strip(), self.code):
+        self.fails += 1
+        if self.fails >= MAX_FAILS:
+          self.locked_until = now + LOCK_TIME
+          self.fails = 0
+        raise PermissionError("코드가 틀림")
+      token = secrets.token_hex(32)
+      tokens = self.tokens()
+      tokens[token] = {"name": (name or "기기")[:40], "paired": time.time()}
+      store.save("tokens.json", tokens)
+      self.code_until = 0.0  # 한 번 쓰면 바로 닫음
+      return token
+
+  def authed(self, token: str | None) -> bool:
+    return bool(token) and any(hmac.compare_digest(token, t) for t in self.tokens())
+
+  def update_alert(self):
+    text = ""
+    if self.pairing_active():
+      addrs = ", ".join(f"{ip}:{PORT}" for ip in self.dev.ip_addresses()) or f"192.168.43.1:{PORT}"
+      text = f"http://{addrs}  code {self.code}"  # 장치 글꼴에 한글이 없을 수 있어 영문만
+    if text != self._last_alert:
+      self.dev.set_pairing_alert(bool(text), text)
+      self._last_alert = text
+
+  # ---- 설정 ----
+  def get_settings(self) -> dict:
+    official = {}
+    for k, spec in OFFICIAL_SETTINGS.items():
+      official[k] = dict(spec, value=self.dev.get_param(k))
+    jun = store.get_settings()
+    return {"onroad": self.dev.is_onroad(), "official": official,
+            "junpilot": {k: dict(spec, value=jun[k]) for k, spec in store.JUNPILOT_SETTINGS.items()}}
+
+  def set_settings(self, body: dict):
+    if self.dev.is_onroad():
+      raise PermissionError("주행 중에는 설정을 바꿀 수 없음. 정차 후 시동을 끄고 다시 시도")
+    for k, v in (body.get("official") or {}).items():
+      spec = OFFICIAL_SETTINGS.get(k)
+      if spec is None:
+        raise KeyError(k)
+      if spec["type"] == "bool" and not isinstance(v, bool):
+        raise ValueError(f"{spec['label']}: 켜기/끄기 값이어야 함")
+      if spec["type"] == "choice_str" and v not in spec["choices"]:
+        raise ValueError(f"{spec['label']}: 허용되지 않은 값")
+    store_changes = body.get("junpilot") or {}
+    for k, v in store_changes.items():
+      store.validate_setting(k, v)
+    for k, v in (body.get("official") or {}).items():
+      self.dev.put_param(k, v)
+    if store_changes:
+      store.set_settings(store_changes)
+
+  # ---- 주행 기록 ----
+  def routes(self) -> list[dict]:
+    root = self.dev.log_root()
+    groups: dict[str, dict] = {}
+    try:
+      names = os.listdir(root)
+    except OSError:
+      return []
+    for d in names:
+      path = os.path.join(root, d)
+      if "--" not in d or not os.path.isdir(path):
+        continue
+      route, seg = d.rsplit("--", 1)
+      if not seg.isdigit():
+        continue
+      g = groups.setdefault(route, {"route": route, "segments": [], "size": 0, "mtime": 0.0, "kinds": set()})
+      g["segments"].append(int(seg))
+      for f in os.listdir(path):
+        fp = os.path.join(path, f)
+        if os.path.isfile(fp):
+          st = os.stat(fp)
+          g["size"] += st.st_size
+          g["mtime"] = max(g["mtime"], st.st_mtime)
+          for kind, fnames in ROUTE_FILES.items():
+            if f in fnames:
+              g["kinds"].add(kind)
+    out = []
+    for g in groups.values():
+      g["segments"].sort()
+      g["kinds"] = sorted(g["kinds"])
+      out.append(g)
+    out.sort(key=lambda g: g["mtime"], reverse=True)
+    return out
+
+  def route_files(self, route: str, kinds: list[str], segments: list[int] | None) -> list[tuple[str, str]]:
+    if "/" in route or ".." in route:
+      raise ValueError("잘못된 경로")
+    root = self.dev.log_root()
+    files = []
+    for g in self.routes():
+      if g["route"] != route:
+        continue
+      for seg in g["segments"]:
+        if segments and seg not in segments:
+          continue
+        segdir = os.path.join(root, f"{route}--{seg}")
+        for kind in kinds:
+          for fname in ROUTE_FILES.get(kind, ()):
+            fp = os.path.join(segdir, fname)
+            if os.path.isfile(fp):
+              files.append((f"{seg:03d}_{fname}", fp))
+              break
+    if not files:
+      raise FileNotFoundError("보낼 파일이 없음")
+    return files
+
+  def send(self, body: dict) -> dict:
+    if self.job and self.job.state in ("대기", "전송 중"):
+      raise RuntimeError("이미 전송 중인 작업이 있음")
+    route = str(body.get("route", ""))
+    kinds = [k for k in body.get("kinds", ["qlog"]) if k in ROUTE_FILES] or ["qlog"]
+    segments = [int(x) for x in (body.get("segments") or [])] or None
+    files = self.route_files(route, kinds, segments)
+    meta = {"route": route, "kinds": kinds, "note": str(body.get("note", ""))[:500],
+            "device": self.dev.info(), "settings": self.get_settings(), "sent_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    bundle = time.strftime("%Y%m%d-%H%M%S") + "_" + route
+    self.job = drive.UploadJob(bundle, files, meta)
+    self.job.start()
+    return self.job.status()
+
+
+def _private(addr: str) -> bool:
+  try:
+    ip = ipaddress.ip_address(addr)
+  except ValueError:
+    return False
+  return ip.is_private or ip.is_loopback
+
+
+def make_handler(app: App):
+  class Handler(BaseHTTPRequestHandler):
+    server_version = "junpilot"
+
+    def log_message(self, *args):
+      pass
+
+    def _token(self):
+      for part in (self.headers.get("Cookie") or "").split(";"):
+        k, _, v = part.strip().partition("=")
+        if k == COOKIE:
+          return v
+      return None
+
+    def _send(self, code: int, obj=None, body: bytes | None = None, ctype="application/json; charset=utf-8", headers=None):
+      if body is None:
+        body = json.dumps(obj, ensure_ascii=False).encode()
+      self.send_response(code)
+      self.send_header("Content-Type", ctype)
+      self.send_header("Content-Length", str(len(body)))
+      self.send_header("Cache-Control", "no-store")
+      for k, v in (headers or {}).items():
+        self.send_header(k, v)
+      self.end_headers()
+      self.wfile.write(body)
+
+    def _body(self) -> dict:
+      n = int(self.headers.get("Content-Length") or 0)
+      if n > 1_000_000:
+        raise ValueError("요청이 너무 큼")
+      return json.loads(self.rfile.read(n) or b"{}")
+
+    def _guard(self) -> bool:
+      if not _private(self.client_address[0]):
+        self._send(403, {"error": "같은 와이파이/핫스팟에서만 접속 가능"})
+        return False
+      return True
+
+    def do_GET(self):
+      if not self._guard():
+        return
+      path = urlparse(self.path).path
+      if path in ("/", "/index.html"):
+        with open(INDEX_HTML, "rb") as f:
+          return self._send(200, body=f.read(), ctype="text/html; charset=utf-8")
+      if path == "/api/ping":
+        return self._send(200, {"paired": app.authed(self._token()), "pairing": app.pairing_active()})
+      if not app.authed(self._token()):
+        return self._send(401, {"error": "페어링 필요"})
+      try:
+        if path == "/api/status":
+          return self._send(200, {"device": app.dev.info(), "onroad": app.dev.is_onroad(),
+                                  "drive": {"configured": bool(drive.get_config()["url"])},
+                                  "job": app.job.status() if app.job else None})
+        if path == "/api/settings":
+          return self._send(200, app.get_settings())
+        if path == "/api/routes":
+          return self._send(200, {"routes": app.routes()})
+        if path == "/api/job":
+          return self._send(200, {"job": app.job.status() if app.job else None})
+        if path.startswith("/api/download/"):
+          _, _, _, route, seg, kind = path.split("/", 5)
+          name, fp = app.route_files(unquote(route), [kind], [int(seg)])[0]
+          with open(fp, "rb") as f:
+            return self._send(200, body=f.read(), ctype="application/octet-stream",
+                              headers={"Content-Disposition": f'attachment; filename="{name}"'})
+      except FileNotFoundError as e:
+        return self._send(404, {"error": str(e)})
+      except Exception as e:
+        return self._send(400, {"error": str(e)})
+      self._send(404, {"error": "없는 주소"})
+
+    def do_POST(self):
+      if not self._guard():
+        return
+      path = urlparse(self.path).path
+      try:
+        body = self._body()
+        if path == "/api/pair":
+          token = app.pair(str(body.get("code", "")), str(body.get("name", "")))
+          app.update_alert()
+          cookie = f"{COOKIE}={token}; Path=/; Max-Age=315360000; HttpOnly; SameSite=Strict"
+          return self._send(200, {"ok": True}, headers={"Set-Cookie": cookie})
+        if path == "/api/show_code":
+          if not app.dev.is_onroad():
+            app.new_code()
+            app.update_alert()
+          return self._send(200, {"ok": True, "pairing": app.pairing_active()})
+        if not app.authed(self._token()):
+          return self._send(401, {"error": "페어링 필요"})
+        if path == "/api/settings":
+          app.set_settings(body)
+          return self._send(200, app.get_settings())
+        if path == "/api/drive":
+          drive.set_config(str(body.get("url", "")), str(body.get("secret", "")))
+          return self._send(200, {"ok": True})
+        if path == "/api/send":
+          return self._send(200, {"job": app.send(body)})
+        if path == "/api/update/check":
+          return self._send(200, {"ok": app.dev.check_update()})
+        if path == "/api/reboot":
+          if app.dev.is_onroad():
+            raise PermissionError("주행 중에는 재부팅 불가")
+          app.dev.reboot()
+          return self._send(200, {"ok": True})
+        if path == "/api/unpair":
+          tokens = app.tokens()
+          tokens.pop(self._token(), None)
+          store.save("tokens.json", tokens)
+          return self._send(200, {"ok": True})
+      except PermissionError as e:
+        return self._send(403, {"error": str(e)})
+      except (KeyError, ValueError, RuntimeError, FileNotFoundError) as e:
+        return self._send(400, {"error": str(e)})
+      self._send(404, {"error": "없는 주소"})
+
+  return Handler
+
+
+def main():
+  from openpilot.junpilot.device import Device
+  app = App(Device())
+  httpd = ThreadingHTTPServer(("0.0.0.0", PORT), make_handler(app))
+  threading.Thread(target=httpd.serve_forever, daemon=True).start()
+  was_onroad = app.dev.is_onroad()
+  while True:
+    onroad = app.dev.is_onroad()
+    if was_onroad and not onroad:
+      app.new_code()  # 시동 끌 때마다 새 코드를 잠시 표시
+    was_onroad = onroad
+    app.update_alert()
+    time.sleep(2)
+
+
+if __name__ == "__main__":
+  main()

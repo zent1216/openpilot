@@ -73,5 +73,10 @@
     "text": "Finish setup. Pair your device with comma connect to view recent drives and bookmarked routes.",
     "severity": -2,
     "icon": "icons_mici/settings/device/green_settings.png"
+  },
+  "Offroad_JunpilotPairing": {
+    "text": "Junpilot web: %1",
+    "severity": 0,
+    "_comment": "junpilot: address and pairing code (ASCII only, device fonts may lack Hangul)"
   }
 }
