@@ -107,3 +107,22 @@ def test_style_changes_curve_speed():
   soft = speed.curve_limit(25, *args, 2.2 + speed.STYLE[0]["lat_bias"], speed.STYLE[0]["decel"])
   fast = speed.curve_limit(25, *args, 2.2 + speed.STYLE[2]["lat_bias"], speed.STYLE[2]["decel"])
   assert soft < fast
+
+
+def test_navi_limit(planner):
+  p, clk = planner
+  c = cs(100)
+  step(p, clk, c, model(100 * KPH))
+  c.junpilotNaviLimit = 80 * KPH
+  assert step(p, clk, c, model(100 * KPH)) == pytest.approx(80 * KPH)
+  store.set_settings({"navi_margin": 5})
+  clk.t += 2
+  # 여유를 올리면 올릴 때는 1초 유지 후 반영
+  for _ in range(30):
+    t = step(p, clk, c, model(100 * KPH))
+  assert t == pytest.approx(85 * KPH)
+  store.set_settings({"navi_slowdown": False})
+  clk.t += 2
+  for _ in range(30):
+    t = step(p, clk, c, model(100 * KPH))
+  assert t == pytest.approx(100 * KPH)

@@ -23,6 +23,8 @@ JUNPILOT_SETTINGS = {
   "cruise_auto": {"type": "bool", "default": False, "label": "크루즈 속도 자동 조절", "ready": True},
   "cruise_style": {"type": "choice", "default": 1, "choices": ["부드럽게", "보통", "빠르게"], "label": "주행 모드", "ready": True},
   "follow_gap": {"type": "int", "default": 3, "min": 1, "max": 4, "label": "차간거리 단계", "ready": False},
+  "navi_slowdown": {"type": "bool", "default": True, "label": "단속카메라·구간단속 감속", "ready": True},
+  "navi_margin": {"type": "int", "default": 0, "min": -5, "max": 10, "label": "단속 속도 여유 (km/h)", "ready": True},
   "curve_slowdown": {"type": "int", "default": 2, "min": 0, "max": 3, "label": "커브 감속 (0=끔, 3=많이)", "ready": True},
 }
 

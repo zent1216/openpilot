@@ -1,6 +1,6 @@
 """준파일럿 속도 계획기: 순정 크루즈 목표 설정속도를 계산한다 (controlsd에서 100Hz 호출).
 
-목표 = min(운전자가 정한 설정속도, 커브 제한, 단속 제한)
+목표 = min(운전자가 정한 설정속도, 커브 제한, 단속 제한(차량 순정 내비))
 - 운전자 설정속도는 따로 기억한다. 자동으로 내린 뒤에도 커브를 지나면 원래 속도로 돌아간다.
 - 실제 가감속은 순정 스마트크루즈가 한다. 여기서는 설정속도만 정한다.
 """
@@ -53,7 +53,7 @@ class SpeedPlanner:
     self.driver_pending_t: float | None = None
     self.target = 0.0
     self.release_t: float | None = None
-    self.camera_limit = math.inf  # 단속 감속 기능에서 채움
+    self.camera_limit = math.inf
     self.debug: dict = {}
 
   def _refresh_settings(self):
@@ -92,6 +92,12 @@ class SpeedPlanner:
     if max_lat is not None and model is not None:
       lim_curve = curve_limit(CS.vEgo, list(model.velocity.x), list(model.orientationRate.z), list(model.position.x),
                               max_lat + style["lat_bias"], style["decel"])
+
+    # 단속카메라·구간단속: 차량 순정 내비가 알려준 제한속도 (+여유)
+    self.camera_limit = math.inf
+    navi = getattr(CS, "junpilotNaviLimit", 0.0)
+    if s.get("navi_slowdown", True) and navi > 0:
+      self.camera_limit = navi + s.get("navi_margin", 0) * KPH
 
     want = max(min(self.driver_set, lim_curve, self.camera_limit), MIN_TARGET)
 
