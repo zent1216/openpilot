@@ -57,15 +57,15 @@ class App:
     with self.lock:
       now = self.clock()
       if now < self.locked_until:
-        raise PermissionError(f"시도가 너무 많음. {int(self.locked_until - now)}초 뒤 다시 시도")
+        raise PermissionError(f"시도가 너무 많아요. {int(self.locked_until - now)}초 뒤에 다시 시도해 주세요.")
       if not self.pairing_active():
-        raise PermissionError("페어링 시간이 아님. '코드 다시 표시'를 누르고 장치 화면을 확인")
+        raise PermissionError("지금은 연결할 수 없어요. '코드 다시 표시'를 누르고 장치 화면을 확인해 주세요.")
       if not hmac.compare_digest(code.strip(), self.code):
         self.fails += 1
         if self.fails >= MAX_FAILS:
           self.locked_until = now + LOCK_TIME
           self.fails = 0
-        raise PermissionError("코드가 틀림")
+        raise PermissionError("코드가 맞지 않아요.")
       token = secrets.token_hex(32)
       tokens = self.tokens()
       tokens[token] = {"name": (name or "기기")[:40], "paired": time.time()}
@@ -96,15 +96,15 @@ class App:
 
   def set_settings(self, body: dict):
     if self.dev.is_onroad():
-      raise PermissionError("주행 중에는 설정을 바꿀 수 없음. 정차 후 시동을 끄고 다시 시도")
+      raise PermissionError("주행 중에는 설정을 바꿀 수 없어요. 시동을 끈 뒤 다시 시도해 주세요.")
     for k, v in (body.get("official") or {}).items():
       spec = OFFICIAL_SETTINGS.get(k)
       if spec is None:
         raise KeyError(k)
       if spec["type"] == "bool" and not isinstance(v, bool):
-        raise ValueError(f"{spec['label']}: 켜기/끄기 값이어야 함")
+        raise ValueError(f"{spec['label']}: 켜기/끄기 값이어야 해요.")
       if spec["type"] == "choice_str" and v not in spec["choices"]:
-        raise ValueError(f"{spec['label']}: 허용되지 않은 값")
+        raise ValueError(f"{spec['label']}: 허용되지 않는 값이에요.")
     store_changes = body.get("junpilot") or {}
     for k, v in store_changes.items():
       store.validate_setting(k, v)
@@ -149,7 +149,7 @@ class App:
 
   def route_files(self, route: str, kinds: list[str], segments: list[int] | None) -> list[tuple[str, str]]:
     if "/" in route or ".." in route:
-      raise ValueError("잘못된 경로")
+      raise ValueError("잘못된 경로예요.")
     root = self.dev.log_root()
     files = []
     for g in self.routes():
@@ -166,12 +166,12 @@ class App:
               files.append((f"{seg:03d}_{fname}", fp))
               break
     if not files:
-      raise FileNotFoundError("보낼 파일이 없음")
+      raise FileNotFoundError("보낼 파일이 없어요.")
     return files
 
   def send(self, body: dict) -> dict:
     if self.job and self.job.state in ("대기", "전송 중"):
-      raise RuntimeError("이미 전송 중인 작업이 있음")
+      raise RuntimeError("이미 전송 중인 작업이 있어요.")
     route = str(body.get("route", ""))
     kinds = [k for k in body.get("kinds", ["qlog"]) if k in ROUTE_FILES] or ["qlog"]
     segments = [int(x) for x in (body.get("segments") or [])] or None
@@ -221,12 +221,12 @@ def make_handler(app: App):
     def _body(self) -> dict:
       n = int(self.headers.get("Content-Length") or 0)
       if n > 1_000_000:
-        raise ValueError("요청이 너무 큼")
+        raise ValueError("요청이 너무 커요.")
       return json.loads(self.rfile.read(n) or b"{}")
 
     def _guard(self) -> bool:
       if not _private(self.client_address[0]):
-        self._send(403, {"error": "같은 와이파이/핫스팟에서만 접속 가능"})
+        self._send(403, {"error": "같은 와이파이나 핫스팟에서만 접속할 수 있어요."})
         return False
       return True
 
@@ -240,7 +240,7 @@ def make_handler(app: App):
       if path == "/api/ping":
         return self._send(200, {"paired": app.authed(self._token()), "pairing": app.pairing_active()})
       if not app.authed(self._token()):
-        return self._send(401, {"error": "페어링 필요"})
+        return self._send(401, {"error": "기기 연결이 필요해요."})
       try:
         if path == "/api/status":
           return self._send(200, {"device": app.dev.info(), "onroad": app.dev.is_onroad(),
@@ -262,7 +262,7 @@ def make_handler(app: App):
         return self._send(404, {"error": str(e)})
       except Exception as e:
         return self._send(400, {"error": str(e)})
-      self._send(404, {"error": "없는 주소"})
+      self._send(404, {"error": "없는 주소예요."})
 
     def do_POST(self):
       if not self._guard():
@@ -281,7 +281,7 @@ def make_handler(app: App):
             app.update_alert()
           return self._send(200, {"ok": True, "pairing": app.pairing_active()})
         if not app.authed(self._token()):
-          return self._send(401, {"error": "페어링 필요"})
+          return self._send(401, {"error": "기기 연결이 필요해요."})
         if path == "/api/settings":
           app.set_settings(body)
           return self._send(200, app.get_settings())
@@ -294,7 +294,7 @@ def make_handler(app: App):
           return self._send(200, {"ok": app.dev.check_update()})
         if path == "/api/reboot":
           if app.dev.is_onroad():
-            raise PermissionError("주행 중에는 재부팅 불가")
+            raise PermissionError("주행 중에는 재부팅할 수 없어요.")
           app.dev.reboot()
           return self._send(200, {"ok": True})
         if path == "/api/unpair":
@@ -306,7 +306,7 @@ def make_handler(app: App):
         return self._send(403, {"error": str(e)})
       except (KeyError, ValueError, RuntimeError, FileNotFoundError) as e:
         return self._send(400, {"error": str(e)})
-      self._send(404, {"error": "없는 주소"})
+      self._send(404, {"error": "없는 주소예요."})
 
   return Handler
 

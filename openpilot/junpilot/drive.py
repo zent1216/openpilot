@@ -24,7 +24,7 @@ def get_config() -> dict:
 def set_config(url: str, secret: str) -> None:
   url, secret = url.strip(), secret.strip()
   if url and not url.startswith("https://script.google.com/"):
-    raise ValueError("Apps Script 웹앱 주소(https://script.google.com/...)여야 함")
+    raise ValueError("Apps Script 웹앱 주소(https://script.google.com/...)를 입력해 주세요.")
   store.save("drive.json", {"url": url, "secret": secret})
 
 
@@ -35,9 +35,9 @@ def _post(url: str, payload: dict, timeout: float = 120) -> None:
   try:
     res = r.json()
   except ValueError as e:
-    raise RuntimeError(f"수신기 응답이 이상함: {r.text[:200]}") from e
+    raise RuntimeError(f"수신기 응답이 올바르지 않아요: {r.text[:200]}") from e
   if not res.get("ok"):
-    raise RuntimeError(f"수신기 오류: {res.get('error', '알 수 없음')}")
+    raise RuntimeError(f"수신기 오류가 발생했어요: {res.get('error', '알 수 없음')}")
 
 
 class UploadJob:
@@ -77,7 +77,7 @@ class UploadJob:
     cfg = get_config()
     try:
       if not cfg["url"] or not cfg["secret"]:
-        raise RuntimeError("구글 드라이브 연결 설정이 비어 있음")
+        raise RuntimeError("구글 드라이브 연결 설정이 비어 있어요. 연결 탭에서 먼저 설정해 주세요.")
       self.state = "전송 중"
       meta = json.dumps(self.meta, ensure_ascii=False, indent=2).encode()
       self._send_bytes(cfg, "meta.json", [meta], 1)

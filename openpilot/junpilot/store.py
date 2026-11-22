@@ -61,13 +61,13 @@ def validate_setting(key: str, value):
   t = spec["type"]
   if t == "bool":
     if not isinstance(value, bool):
-      raise ValueError("켜기/끄기 값이어야 함")
+      raise ValueError("켜기/끄기 값이어야 해요.")
   elif t in ("int", "choice"):
     if isinstance(value, bool) or not isinstance(value, int):
-      raise ValueError("숫자여야 함")
+      raise ValueError("숫자여야 해요.")
     lo, hi = (0, len(spec["choices"]) - 1) if t == "choice" else (spec["min"], spec["max"])
     if not lo <= value <= hi:
-      raise ValueError(f"{lo}~{hi} 범위여야 함")
+      raise ValueError(f"{lo}~{hi} 사이 값이어야 해요.")
   return value
 
 

@@ -8,8 +8,8 @@ const ROOT_NAME = '준파일럿 로그';
 function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
-    if (req.secret !== SECRET) return out({ ok: false, error: '비밀값이 다름' });
-    if (!/^[\w.\-가-힣]+$/.test(req.bundle) || !/^[\w.\-]+$/.test(req.name)) return out({ ok: false, error: '이름 형식 오류' });
+    if (req.secret !== SECRET) return out({ ok: false, error: '비밀값이 맞지 않아요.' });
+    if (!/^[\w.\-가-힣]+$/.test(req.bundle) || !/^[\w.\-]+$/.test(req.name)) return out({ ok: false, error: '파일 이름 형식이 올바르지 않아요.' });
 
     const folder = sub(sub(DriveApp.getRootFolder(), ROOT_NAME), req.bundle);
     const name = req.total > 1 ? `${req.name}.part${String(req.part).padStart(3, '0')}` : req.name;

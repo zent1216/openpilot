@@ -66,7 +66,7 @@
   <section id="pair" class="hidden">
     <div class="card">
       <h2>기기 연결</h2>
-      <p>콤마4 화면 알림에 뜬 <b>6자리 페어링 코드</b>를 입력해. 한 번 연결하면 다음부터는 자동으로 들어와져.</p>
+      <p>콤마4 화면 알림에 뜬 <b>6자리 페어링 코드</b>를 입력해 주세요. 한 번 연결하면 다음부터는 자동으로 접속돼요.</p>
       <input id="code" class="code" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code">
       <label class="t">이 기기 이름 (선택)</label>
       <input id="devname" placeholder="예: 내 휴대폰">
@@ -74,7 +74,7 @@
       <button class="b" onclick="pair()">연결하기</button>
       <div style="height:8px"></div>
       <button class="b ghost" onclick="showCode()">장치 화면에 코드 다시 표시</button>
-      <p><small>코드는 시동을 끈 뒤 10분 동안 표시돼. 주행 중에는 연결할 수 없어.</small></p>
+      <p><small>코드는 시동을 끈 뒤 10분 동안 표시돼요. 주행 중에는 연결할 수 없어요.</small></p>
     </div>
   </section>
 
@@ -86,7 +86,7 @@
       <h2>업데이트</h2>
       <div id="st-upd"></div>
       <div class="grid2">
-        <button class="b ghost" onclick="post('/api/update/check').then(()=>note('업데이트 확인을 요청했어. 잠시 뒤 새로고침해 줘.','ok'))">업데이트 확인</button>
+        <button class="b ghost" onclick="post('/api/update/check').then(()=>note('업데이트 확인을 요청했어요. 잠시 뒤 새로고침해 주세요.','ok'))">업데이트 확인</button>
         <button class="b ghost" onclick="reboot()">재부팅</button>
       </div>
     </div>
@@ -96,7 +96,7 @@
   <section id="tab-routes" class="hidden">
     <div class="card" id="job-card">
       <h2>전송 상태</h2>
-      <div id="job"><small>진행 중인 전송 없음</small></div>
+      <div id="job"><small>진행 중인 전송이 없어요</small></div>
     </div>
     <div class="card">
       <h2>주행기록</h2>
@@ -114,10 +114,10 @@
 
   <!-- 설정 -->
   <section id="tab-settings" class="hidden">
-    <div id="set-onroad" class="msg info hidden">주행 중에는 설정을 바꿀 수 없어. 시동을 끈 뒤 바꿔 줘.</div>
+    <div id="set-onroad" class="msg info hidden">주행 중에는 설정을 바꿀 수 없어요. 시동을 끈 뒤 바꿔 주세요.</div>
     <div class="card"><h2>기본 설정</h2><div id="set-official"></div></div>
     <div class="card"><h2>준파일럿 크루즈 <span class="pill acc">준비 중</span></h2>
-      <p><small>레이더 트랙 기능이 들어가면 적용돼. 지금은 값만 저장돼.</small></p>
+      <p><small>레이더 트랙 기능이 추가되면 적용돼요. 지금은 값만 저장돼요.</small></p>
       <div id="set-jun"></div>
     </div>
     <button class="b" id="save-btn" onclick="saveSettings()">저장하고 장치에 반영</button>
@@ -127,7 +127,7 @@
   <section id="tab-link" class="hidden">
     <div class="card">
       <h2>구글 드라이브 연결</h2>
-      <p><small>Apps Script 수신기 주소와 비밀값을 넣어 줘. 설치 방법은 저장소의 <b>openpilot/junpilot/apps_script/설치방법.md</b> 참고.</small></p>
+      <p><small>Apps Script 수신기 주소와 비밀값을 입력해 주세요. 설치 방법은 저장소의 <b>openpilot/junpilot/apps_script/설치방법.md</b>를 참고해 주세요.</small></p>
       <label class="t">웹앱 주소</label>
       <input id="drv-url" placeholder="https://script.google.com/macros/s/…/exec">
       <label class="t">비밀값 (Code.gs의 SECRET과 같게)</label>
@@ -155,17 +155,17 @@ function row(k, v) { return `<div class="row"><span class="k">${esc(k)}</span><s
 async function api(path, opt={}) {
   const r = await fetch(path, {credentials:'same-origin', ...opt});
   const j = await r.json().catch(() => ({}));
-  if (r.status === 401) { showPair(); throw new Error('페어링 필요'); }
-  if (!r.ok) throw new Error(j.error || ('오류 ' + r.status));
+  if (r.status === 401) { showPair(); throw new Error('기기 연결이 필요해요.'); }
+  if (!r.ok) throw new Error(j.error || ('오류가 발생했어요 (' + r.status + ')'));
   return j;
 }
 const post = (path, body={}) => api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).catch(e => { note(e.message); throw e; });
 
 function showPair() { $('#pair').classList.remove('hidden'); $('#nav').classList.add('hidden'); document.querySelectorAll('section[id^=tab-]').forEach(s => s.classList.add('hidden')); }
 async function pair() {
-  try { await post('/api/pair', {code: $('#code').value, name: $('#devname').value}); note('연결됐어.', 'ok'); start(); } catch {}
+  try { await post('/api/pair', {code: $('#code').value, name: $('#devname').value}); note('연결됐어요.', 'ok'); start(); } catch {}
 }
-async function showCode() { try { const j = await post('/api/show_code'); note(j.pairing ? '장치 화면을 확인해 줘.' : '주행 중에는 코드를 표시할 수 없어.', j.pairing ? 'info' : 'err'); } catch {} }
+async function showCode() { try { const j = await post('/api/show_code'); note(j.pairing ? '장치 화면을 확인해 주세요.' : '주행 중에는 코드를 표시할 수 없어요.', j.pairing ? 'info' : 'err'); } catch {} }
 
 function go(t) {
   tab = t;
@@ -185,7 +185,7 @@ async function loadStatus() {
     + row('버전', esc(d.Version)) + row('브랜치', esc(d.GitBranch)) + row('커밋', esc((d.GitCommit||'').slice(0,8)))
     + row('구글 드라이브', s.drive.configured ? '<span class="pill ok">연결됨</span>' : '<span class="pill bad">미설정</span>');
   const c = d.car;
-  $('#st-car').innerHTML = !c ? '<small>아직 차량 정보 없음. 차에 연결하고 시동을 한 번 켜 줘.</small>'
+  $('#st-car').innerHTML = !c ? '<small>아직 차량 정보가 없어요. 차에 연결하고 시동을 한 번 켜 주세요.</small>'
     : row('차종', esc(c.fingerprint)) + row('인식 방식', esc(c.fingerprintSource)) + row('차대번호', esc(c.vin))
       + `<details style="margin-top:8px"><summary class="k">펌웨어 값 (${c.fw.length}개)</summary><div class="fw">${c.fw.map(f => esc(`${f.ecu} 0x${f.address.toString(16)}${f.subAddress?'/'+f.subAddress:''}  ${f.version}`)).join('\n')}</div></details>`;
   $('#st-upd').innerHTML = row('상태', esc(d.UpdaterState || '-')) + row('현재', esc(d.UpdaterCurrentDescription || '-'))
@@ -194,7 +194,7 @@ async function loadStatus() {
 
 async function loadRoutes() {
   const {routes} = await api('/api/routes');
-  if (!routes.length) { $('#routes').innerHTML = '<small>저장된 주행기록이 없어.</small>'; return; }
+  if (!routes.length) { $('#routes').innerHTML = '<small>저장된 주행기록이 없어요.</small>'; return; }
   $('#routes').innerHTML = routes.map(r => `
     <div class="route">
       <div class="top"><span class="name">${esc(r.route)}</span><span class="k">${when(r.mtime)}</span></div>
@@ -206,8 +206,8 @@ async function loadRoutes() {
 function dl(route, seg) { location.href = `/api/download/${encodeURIComponent(route)}/${seg}/qlog`; }
 async function send(route) {
   const kinds = ['qlog','rlog','qcamera'].filter(k => $('#k-'+k).checked);
-  if (!kinds.length) return note('보낼 것을 하나 이상 골라 줘.');
-  try { await post('/api/send', {route, kinds, note: $('#note').value}); note('전송을 시작했어.', 'ok'); loadJob(); } catch {}
+  if (!kinds.length) return note('보낼 항목을 하나 이상 골라 주세요.');
+  try { await post('/api/send', {route, kinds, note: $('#note').value}); note('전송을 시작했어요.', 'ok'); loadJob(); } catch {}
 }
 async function loadJob() {
   const {job} = await api('/api/job');
@@ -216,7 +216,7 @@ async function loadJob() {
   $('#job').innerHTML = `<div class="top" style="display:flex;justify-content:space-between"><span class="name" style="font-size:12px">${esc(job.bundle)}</span><span class="pill ${cls}">${esc(job.state)}</span></div>
     <div class="bar"><i style="width:${job.progress}%"></i></div><small>${job.progress}% · 파일 ${job.files.length}개</small>
     ${job.error ? `<div class="msg err" style="margin-top:8px">${esc(job.error)}</div>` : ''}
-    ${job.state === '완료' ? '<div class="msg ok" style="margin-top:8px">Claude에게 "로그 올렸어"라고 말해 줘.</div>' : ''}`;
+    ${job.state === '완료' ? '<div class="msg ok" style="margin-top:8px">Claude에게 "로그 올렸어"라고 알려 주세요.</div>' : ''}`;
 }
 
 function control(group, key, spec) {
@@ -246,14 +246,14 @@ async function saveSettings() {
   const body = {official:{}, junpilot:{}};
   for (const [k, s] of Object.entries(settings.official)) { const v = read('o', k, s); if (v !== s.value) body.official[k] = v; }
   for (const [k, s] of Object.entries(settings.junpilot)) { const v = read('j', k, s); if (v !== s.value) body.junpilot[k] = v; }
-  if (!Object.keys(body.official).length && !Object.keys(body.junpilot).length) return note('바뀐 값이 없어.', 'info');
-  try { await post('/api/settings', body); note('저장해서 장치에 반영했어.', 'ok'); loadSettings(); } catch {}
+  if (!Object.keys(body.official).length && !Object.keys(body.junpilot).length) return note('바뀐 값이 없어요.', 'info');
+  try { await post('/api/settings', body); note('저장해서 장치에 반영했어요.', 'ok'); loadSettings(); } catch {}
 }
 async function saveDrive() {
-  try { await post('/api/drive', {url: $('#drv-url').value, secret: $('#drv-secret').value}); note('구글 드라이브 연결을 저장했어.', 'ok'); } catch {}
+  try { await post('/api/drive', {url: $('#drv-url').value, secret: $('#drv-secret').value}); note('구글 드라이브 연결을 저장했어요.', 'ok'); } catch {}
 }
-async function reboot() { if (confirm('장치를 재부팅할까?')) { try { await post('/api/reboot'); note('재부팅 중…', 'info'); } catch {} } }
-async function unpair() { if (confirm('이 기기 연결을 해제할까?')) { try { await post('/api/unpair'); showPair(); } catch {} } }
+async function reboot() { if (confirm('장치를 재부팅할까요?')) { try { await post('/api/reboot'); note('재부팅하고 있어요…', 'info'); } catch {} } }
+async function unpair() { if (confirm('이 기기 연결을 해제할까요?')) { try { await post('/api/unpair'); showPair(); } catch {} } }
 
 async function start() {
   const p = await fetch('/api/ping').then(r => r.json()).catch(() => ({}));
