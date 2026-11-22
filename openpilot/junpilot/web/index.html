@@ -116,8 +116,8 @@
   <section id="tab-settings" class="hidden">
     <div id="set-onroad" class="msg info hidden">주행 중에는 설정을 바꿀 수 없어요. 시동을 끈 뒤 바꿔 주세요.</div>
     <div class="card"><h2>기본 설정</h2><div id="set-official"></div></div>
-    <div class="card"><h2>준파일럿 크루즈 <span class="pill acc">준비 중</span></h2>
-      <p><small>레이더 트랙 기능이 추가되면 적용돼요. 지금은 값만 저장돼요.</small></p>
+    <div class="card"><h2>준파일럿 크루즈</h2>
+      <p><small>순정 스마트크루즈의 설정속도만 자동으로 바꿔요. 가속과 제동은 순정 크루즈가 하고, 긴급제동도 그대로 동작해요. 핸들의 크루즈 버튼을 누르면 그 속도를 기억하고 2초 동안 자동 조절을 쉬어요.</small></p>
       <div id="set-jun"></div>
     </div>
     <button class="b" id="save-btn" onclick="saveSettings()">저장하고 장치에 반영</button>
@@ -219,15 +219,16 @@ async function loadJob() {
     ${job.state === '완료' ? '<div class="msg ok" style="margin-top:8px">Claude에게 "로그 올렸어"라고 알려 주세요.</div>' : ''}`;
 }
 
+function badge(spec) { return spec.ready === false ? ' <span class="pill acc">준비 중</span>' : ''; }
 function control(group, key, spec) {
   const id = `${group}-${key}`;
   if (spec.type === 'bool')
-    return `<label class="row"><span>${esc(spec.label)}</span><span class="sw"><input type="checkbox" id="${id}" ${spec.value ? 'checked' : ''}><span></span></span></label>`;
+    return `<label class="row"><span>${esc(spec.label)}${badge(spec)}</span><span class="sw"><input type="checkbox" id="${id}" ${spec.value ? 'checked' : ''}><span></span></span></label>`;
   let opts;
   if (spec.type === 'choice_str') opts = Object.entries(spec.choices).map(([v, l]) => `<option value="${v}" ${v === spec.value ? 'selected' : ''}>${esc(l)}</option>`);
   else if (spec.type === 'choice') opts = spec.choices.map((l, i) => `<option value="${i}" ${i === spec.value ? 'selected' : ''}>${esc(l)}</option>`);
   else { opts = []; for (let i = spec.min; i <= spec.max; i++) opts.push(`<option value="${i}" ${i === spec.value ? 'selected' : ''}>${i}</option>`); }
-  return `<div class="row"><span>${esc(spec.label)}</span><select id="${id}" style="width:auto">${opts.join('')}</select></div>`;
+  return `<div class="row"><span>${esc(spec.label)}${badge(spec)}</span><select id="${id}" style="width:auto">${opts.join('')}</select></div>`;
 }
 async function loadSettings() {
   settings = await api('/api/settings');

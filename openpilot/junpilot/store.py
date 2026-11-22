@@ -18,12 +18,12 @@ def data_dir() -> str:
   return d
 
 
-# 준파일럿 자체 설정. 크루즈 관련 값은 레이더 트랙 기능 구현 시 사용 (현재는 저장만 됨)
+# 준파일럿 자체 설정. ready=False 항목은 아직 저장만 되고 동작에는 반영되지 않음
 JUNPILOT_SETTINGS = {
-  "cruise_auto": {"type": "bool", "default": False, "label": "크루즈 속도 자동 조절", "ready": False},
-  "cruise_style": {"type": "choice", "default": 1, "choices": ["부드럽게", "보통", "빠르게"], "label": "가감속 성향", "ready": False},
+  "cruise_auto": {"type": "bool", "default": False, "label": "크루즈 속도 자동 조절", "ready": True},
+  "cruise_style": {"type": "choice", "default": 1, "choices": ["부드럽게", "보통", "빠르게"], "label": "주행 모드", "ready": True},
   "follow_gap": {"type": "int", "default": 3, "min": 1, "max": 4, "label": "차간거리 단계", "ready": False},
-  "curve_slowdown": {"type": "int", "default": 2, "min": 0, "max": 3, "label": "커브 감속 정도", "ready": False},
+  "curve_slowdown": {"type": "int", "default": 2, "min": 0, "max": 3, "label": "커브 감속 (0=끔, 3=많이)", "ready": True},
 }
 
 _lock = threading.Lock()

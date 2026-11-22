@@ -43,6 +43,10 @@ class Controls:
                                    'driverMonitoringState', 'onroadEvents', 'driverAssistance'], poll='selfdriveState')
     self.pm = messaging.PubMaster(['carControl', 'controlsState'])
 
+    # 준파일럿: 순정 크루즈(PCM) 차량에서 설정속도 자동 조절
+    from openpilot.junpilot.speed import SpeedPlanner
+    self.jp_speed = SpeedPlanner() if (self.CP.pcmCruise and not self.CP.openpilotLongitudinalControl) else None
+
     self.steer_limited_by_safety = False
     self.curvature = 0.0
     self.desired_curvature = 0.0
@@ -161,6 +165,9 @@ class Controls:
     CC.cruiseControl.override = CC.enabled and not CC.longActive and self.CP.openpilotLongitudinalControl
     CC.cruiseControl.cancel = CS.cruiseState.enabled and (not CC.enabled or not self.CP.pcmCruise)
     CC.cruiseControl.resume = CC.enabled and CS.cruiseState.standstill and not self.sm['longitudinalPlan'].shouldStop
+    if self.jp_speed is not None:
+      jp_target = self.jp_speed.update(CS, self.sm['modelV2'])  # 운전자 설정속도 기억을 위해 항상 호출
+      CC.cruiseControl.junpilotTargetSpeed = float(jp_target) if CC.enabled else 0.0
 
     hudControl = CC.hudControl
     hudControl.setSpeed = float(CS.vCruiseCluster * CV.KPH_TO_MS)
