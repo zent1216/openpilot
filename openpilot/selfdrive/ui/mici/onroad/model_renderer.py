@@ -8,8 +8,9 @@ from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.selfdrive.ui.mici.onroad import blend_colors
 from openpilot.selfdrive.ui.mici.onroad.status import status_fade
 from openpilot.selfdrive.ui.onroad.model_renderer import ModelRenderer as BaseModelRenderer, CLIP_MARGIN, MAX_DRAW_DISTANCE, STOCK_PATH_GRADIENT
-from openpilot.system.ui.lib.application import gui_app
+from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.polygon import Gradient, draw_polygon
+from openpilot.system.ui.lib.text_measure import measure_text_cached
 
 LEAD_BAR_LENGTH = 10.0  # px
 LEAD_BAR_WIDTH = 1.8  # m
@@ -126,7 +127,8 @@ class ModelRenderer(BaseModelRenderer):
     model = sm['modelV2']
     radar_state = sm['radarState'] if sm.valid['radarState'] else None
     lead_one = radar_state.leadOne if radar_state else None
-    render_lead_indicator = self._longitudinal_control and radar_state is not None
+    # 준파일럿: 순정 크루즈 차량에서도 추적 중인 앞차를 표시
+    render_lead_indicator = radar_state is not None
 
     # Update model data when needed
     model_updated = sm.updated['modelV2']
@@ -182,7 +184,9 @@ class ModelRenderer(BaseModelRenderer):
 
     # the radar is at the front of the car, which is what stops at the planned stop
     lead_distances = [d_rel for present, d_rel, _ in leads if present]
+    self._jp_lead_dist = leads[0][1] - RADAR_TO_CAMERA if leads[0][0] else None
     planning_stop = self._stop_point.update(sm['modelV2'], sm.updated['modelV2'], cs.vEgo, lead_distances)
+    planning_stop = planning_stop and self._longitudinal_control  # 순정 크루즈는 정지 지점 계획이 없음
     d_stop = self._stop_point.d + RADAR_TO_CAMERA
     visible = available and planning_stop and d_stop < MAX_DRAW_DISTANCE and len(lane) > 0
     # brighter than a lead bar to tell them apart
@@ -265,5 +269,16 @@ class ModelRenderer(BaseModelRenderer):
 
   def _draw_lead_indicator(self):
     offset = self._draw_offset()
-    for lead in (*self._lead_bars, self._stop_point):
-      draw_polygon(self._rect, lead.bar + offset, rl.Color(255, 255, 255, int(255 * lead.fade_filter.x)))
+    for i, lead in enumerate((*self._lead_bars, self._stop_point)):
+      # 준파일럿: 추적 중인 첫 번째 앞차는 초록색 + 거리
+      color = rl.Color(62, 207, 142, int(255 * lead.fade_filter.x)) if i == 0 else rl.Color(255, 255, 255, int(255 * lead.fade_filter.x))
+      draw_polygon(self._rect, lead.bar + offset, color)
+    lead = self._lead_bars[0]
+    dist = getattr(self, "_jp_lead_dist", None)
+    if dist is not None and lead.fade_filter.x > 0.05 and lead.bar.size:
+      pos = lead.bar[[1, 2]].mean(axis=0) + offset
+      text = f"{dist:.0f}m"
+      font = gui_app.font(FontWeight.SEMI_BOLD)
+      size = measure_text_cached(font, text, 26)
+      rl.draw_text_ex(font, text, rl.Vector2(pos[0] - size.x / 2, pos[1] + 4), 26, 0,
+                      rl.Color(62, 207, 142, int(255 * min(1.0, lead.fade_filter.x / 0.8))))

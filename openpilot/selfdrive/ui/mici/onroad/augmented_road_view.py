@@ -10,6 +10,7 @@ from openpilot.selfdrive.ui.mici.onroad.driver_state import DriverStateRenderer
 from openpilot.selfdrive.ui.mici.onroad.status import status_fade
 from openpilot.selfdrive.ui.mici.onroad.hud_renderer import HudRenderer
 from openpilot.selfdrive.ui.mici.onroad.long_indicator import LongIndicator
+from openpilot.junpilot.ui.mici_overlay import JunpilotOverlay
 from openpilot.selfdrive.ui.mici.onroad.model_renderer import ModelRenderer
 from openpilot.selfdrive.ui.mici.onroad.navigation import NavigationPanel, PANEL_WIDTH
 from openpilot.selfdrive.ui.mici.onroad.confidence_ball import ConfidenceBall
@@ -174,6 +175,7 @@ class AugmentedRoadView(CameraView):
 
     self._navigation = NavigationPanel()
     self._model_renderer = ModelRenderer()
+    self._jp_overlay = JunpilotOverlay()  # 준파일럿: 예상 차선, 측후방 경고, 차간거리
     self._hud_renderer = HudRenderer()
     self._long_indicator = LongIndicator()
     self._alert_renderer = AlertRenderer()
@@ -255,6 +257,8 @@ class AugmentedRoadView(CameraView):
 
     # Draw all UI overlays
     self._model_renderer.render(self._content_rect)
+    if ui_state.started:
+      self._jp_overlay.render(self._content_rect, self._model_renderer, ui_state.sm, ui_state.status != UIStatus.DISENGAGED)  # 준파일럿
 
     # Fade out bottom of overlays for looks
     rl.draw_texture_ex(self._fade_texture, rl.Vector2(self._content_rect.x, self._content_rect.y), 0.0, 1.0, rl.WHITE)

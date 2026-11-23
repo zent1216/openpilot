@@ -51,7 +51,7 @@ class UploadJob:
     self.sent_bytes = 0
     self.state = "대기"
     self.error = ""
-    self.started = time.time()
+    self.started = time.time()  # noqa: TID251  벽시계 시각(표시용)
     self.finished: float | None = None
 
   def status(self) -> dict:
@@ -98,7 +98,7 @@ class UploadJob:
       self.state = "실패"
       self.error = str(e)
     finally:
-      self.finished = time.time()
+      self.finished = time.time()  # noqa: TID251  벽시계 시각(표시용)
 
   def start(self):
     threading.Thread(target=self.run, daemon=True).start()

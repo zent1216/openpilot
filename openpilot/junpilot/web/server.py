@@ -68,7 +68,7 @@ class App:
         raise PermissionError("코드가 맞지 않아요.")
       token = secrets.token_hex(32)
       tokens = self.tokens()
-      tokens[token] = {"name": (name or "기기")[:40], "paired": time.time()}
+      tokens[token] = {"name": (name or "기기")[:40], "paired": time.time()}  # noqa: TID251  벽시계 시각(표시용)
       store.save("tokens.json", tokens)
       self.code_until = 0.0  # 한 번 쓰면 바로 닫음
       return token

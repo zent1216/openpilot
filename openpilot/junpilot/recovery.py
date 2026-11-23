@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E501, ISC002
 """준파일럿 복구 서버 (포트 8083).
 
 오픈파일럿이 켜지지 않거나 업데이트 후 망가져도 휴대폰으로 되살릴 수 있게 한다.
@@ -9,7 +10,6 @@
 기능: 상태/로그 보기, 정상 동작했던 버전으로 되돌리기, 최신 버전 다시 받기, 업데이트 직전 버전 복원, 재부팅
 """
 import hmac
-import html
 import ipaddress
 import json
 import os
@@ -18,7 +18,7 @@ import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 PORT = int(os.getenv("JUNPILOT_RECOVERY_PORT", "8083"))
 OP_DIR = os.getenv("JUNPILOT_OP_DIR", "/data/openpilot")
@@ -80,7 +80,7 @@ def _run_job(name: str, cmd: str):
   with _job_lock:
     if _job["state"] == "진행 중":
       raise RuntimeError("이미 진행 중인 작업이 있어요.")
-    _job.update(name=name, state="진행 중", log="", started=time.time())
+    _job.update(name=name, state="진행 중", log="", started=time.time())  # noqa: TID251  벽시계 시각(표시용)
 
   def work():
     try:

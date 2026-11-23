@@ -1,5 +1,4 @@
 import json
-import os
 import subprocess
 import threading
 import time
@@ -19,7 +18,8 @@ def env(tmp_path, monkeypatch):
   g("init", "-q", "-b", "junpilot")
   g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "첫 버전")
   data, params = tmp_path / "jp", tmp_path / "params"
-  data.mkdir(); params.mkdir()
+  data.mkdir()
+  params.mkdir()
   monkeypatch.setattr(recovery, "OP_DIR", str(op))
   monkeypatch.setattr(recovery, "DATA_DIR", str(data))
   monkeypatch.setattr(recovery, "PARAMS_DIR", str(params))
