@@ -159,3 +159,17 @@ def test_rejects_non_lan_clients():
   assert not server._private("8.8.8.8")
   assert not server._private("100.64.1.1")  # 통신사(LTE) 공유 주소 차단
   assert not server._private("211.234.10.5")
+
+
+def test_app_download(env, tmp_path, monkeypatch):
+  app, dev, base = env
+  appdir = tmp_path / "appdir"
+  appdir.mkdir()
+  monkeypatch.setattr(server, "APP_DIR", str(appdir))
+  assert requests.get(base + "/api/app/version").json()["versionCode"] == 0
+  assert requests.get(base + "/app/junpilot.apk").status_code == 404
+  (appdir / "junpilot.apk").write_bytes(b"PK-apk")
+  (appdir / "version.json").write_text('{"versionCode": 3, "versionName": "1.0.3"}')
+  assert requests.get(base + "/api/app/version").json()["versionCode"] == 3
+  r = requests.get(base + "/app/junpilot.apk")
+  assert r.content == b"PK-apk" and r.headers["Content-Type"] == "application/vnd.android.package-archive"

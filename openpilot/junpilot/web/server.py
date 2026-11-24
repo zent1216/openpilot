@@ -26,6 +26,7 @@ MAX_FAILS = 5
 LOCK_TIME = 60
 COOKIE = "junpilot_token"
 INDEX_HTML = os.path.join(os.path.dirname(__file__), "index.html")
+APP_DIR = os.path.join(os.path.dirname(__file__), "app")  # 휴대폰 앱 APK (junpilot-app 빌드 결과를 함께 배포)
 ROUTE_FILES = {"qlog": ("qlog.zst", "qlog"), "rlog": ("rlog.zst", "rlog"), "qcamera": ("qcamera.ts",)}
 
 
@@ -201,6 +202,14 @@ class App:
     return self.job.status()
 
 
+def app_version() -> dict:
+  try:
+    with open(os.path.join(APP_DIR, "version.json")) as f:
+      return json.load(f)
+  except (OSError, ValueError):
+    return {"versionCode": 0, "versionName": ""}
+
+
 def _private(addr: str) -> bool:
   try:
     ip = ipaddress.ip_address(addr)
@@ -280,6 +289,15 @@ def make_handler(app: App):
       if path in ("/", "/index.html"):
         with open(INDEX_HTML, "rb") as f:
           return self._send(200, body=f.read(), ctype="text/html; charset=utf-8")
+      if path == "/api/app/version":
+        return self._send(200, app_version())
+      if path == "/app/junpilot.apk":
+        apk = os.path.join(APP_DIR, "junpilot.apk")
+        if not os.path.isfile(apk):
+          return self._send(404, {"error": "앱 파일이 없어요."})
+        with open(apk, "rb") as f:
+          return self._send(200, body=f.read(), ctype="application/vnd.android.package-archive",
+                            headers={"Content-Disposition": 'attachment; filename="junpilot.apk"'})
       if path == "/api/ping":
         return self._send(200, {"paired": app.authed(self._token()), "pairing": app.pairing_active()})
       if not app.authed(self._token()):
