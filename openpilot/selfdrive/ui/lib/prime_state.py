@@ -11,6 +11,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.system.athena.registration import UNREGISTERED_DONGLE_ID
 from openpilot.selfdrive.ui.lib.api_helpers import get_token
 from openpilot.selfdrive.selfdrived.alertmanager import set_offroad_alert
+from openpilot.junpilot import OFFLINE
 
 
 class PrimeType(IntEnum):
@@ -44,7 +45,7 @@ class PrimeState:
     self._pairing_email: str | None = self._params.get("PairingEmail")
     self._commacare = False
 
-    set_offroad_alert("Offroad_Pairing", self.prime_type <= PrimeType.UNPAIRED)
+    set_offroad_alert("Offroad_Pairing", self.prime_type <= PrimeType.UNPAIRED and not OFFLINE)  # 준파일럿: 콤마 서버 안 씀
 
     self._running = False
     self._thread = None
@@ -107,7 +108,7 @@ class PrimeState:
         self.prime_type = prime_type
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
-        set_offroad_alert("Offroad_Pairing", self.prime_type <= PrimeType.UNPAIRED)
+        set_offroad_alert("Offroad_Pairing", self.prime_type <= PrimeType.UNPAIRED and not OFFLINE)  # 준파일럿: 콤마 서버 안 씀
 
   def set_provider(self, provider: Provider | None, email: str | None):
     with self._lock:
