@@ -9,6 +9,9 @@
 import re
 
 EXACT: dict[str, str] = {
+  # ---------- 첫 화면 ----------
+  "openpilot": "준파일럿", "release": "정식",
+
   # ---------- 공통 버튼/단어 ----------
   "Back": "뒤로", "back": "뒤로", "Cancel": "취소", "cancel": "취소", "Save": "저장", "Select": "선택", "Delete": "삭제",
   "Exit": "나가기", "Forget": "삭제", "Reboot": "재부팅", "reboot": "재부팅", "Update": "업데이트", "Setup": "설정",
@@ -265,6 +268,19 @@ OFFROAD = {
 }
 EXACT.update(OFFROAD)
 
+_MONTHS = {m: i + 1 for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])}
+_DATE = re.compile(r"^(\s*)(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? (\d{1,2})(?:, (\d{4}))?(\s*)$")
+
+
+def _date(text: str) -> str | None:
+  """'Nov 24' -> '11월 24일' (첫 화면 날짜 등)"""
+  m = _DATE.match(text)
+  if not m:
+    return None
+  year = f"{m.group(4)}년 " if m.group(4) else ""
+  return f"{m.group(1)}{year}{_MONTHS[m.group(2)]}월 {int(m.group(3))}일{m.group(5)}"
+
+
 _cache: dict[str, str] = {}
 _HANGUL = re.compile("[\uac00-\ud7a3]")
 _LETTER = re.compile("[A-Za-z]")
@@ -291,6 +307,8 @@ def translate(text: str, base: dict[str, str] | None = None) -> str:
       if t:
         out = text.replace(stripped, t)
   if out is None:
+    out = _date(text)
+  if out is None:
     for pat, rep in PATTERNS:
       m = pat.match(text)
       if m:
@@ -313,4 +331,5 @@ def all_chars() -> set[str]:
     chars.update(rep)
   for v in WORDS.values():
     chars.update(v)
+  chars.update("년월일")
   return chars

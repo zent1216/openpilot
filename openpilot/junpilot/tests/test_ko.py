@@ -37,3 +37,10 @@ def test_font_has_every_translated_character():
   cmap = TTFont(os.path.join(BASEDIR, "openpilot/junpilot/ui/fonts/NotoSansKR-junpilot.otf")).getBestCmap()
   missing = sorted(c for c in ko.all_chars() if c != "\n" and ord(c) not in cmap)
   assert not missing, missing
+
+
+def test_home_screen():
+  assert ko.translate("openpilot") == "준파일럿"
+  assert ko.translate(" Nov 24") == " 11월 24일"
+  assert ko.translate("Jan 5, 2027") == "2027년 1월 5일"
+  assert ko.translate("0.11.4") == "0.11.4"
