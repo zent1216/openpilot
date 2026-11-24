@@ -24,7 +24,7 @@ JUNPILOT_SETTINGS = {
   "cruise_style": {"type": "choice", "default": 1, "choices": ["부드럽게", "보통", "빠르게"], "label": "주행 모드", "ready": True},
   "follow_gap": {"type": "int", "default": 3, "min": 1, "max": 4, "label": "차간거리 단계", "ready": False},
   "navi_slowdown": {"type": "bool", "default": True, "label": "단속카메라·구간단속 감속", "ready": True},
-  "nmirror": {"type": "bool", "default": True, "label": "엔미러(TMAP) 단속 정보도 사용", "ready": True},
+  "nmirror": {"type": "bool", "default": True, "label": "폰 내비 단속 정보 사용", "ready": True},
   "navi_margin": {"type": "int", "default": 0, "min": -5, "max": 10, "label": "단속 속도 여유 (km/h)", "ready": True},
   # 0=사용 안 함, 1=수동(핸들을 밀어서), 2~4=깜빡이 1~3초 후 자동
   "lane_change_mode": {"type": "choice", "default": 1,
