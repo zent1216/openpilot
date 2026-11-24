@@ -47,7 +47,8 @@ def _load_json(name: str, default):
 
 
 def is_onroad() -> bool:
-  return _read(os.path.join(PARAMS_DIR, "IsOnroad")).strip() in ("1", "\x01")
+  # IsOffroad 가 '0' 이면 주행 중 (파일이 없으면 정차로 봄)
+  return _read(os.path.join(PARAMS_DIR, "IsOffroad"), "1").strip() in ("0", "\x00")
 
 
 def git(*args: str, timeout: float = 20) -> str:

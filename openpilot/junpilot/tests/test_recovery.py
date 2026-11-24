@@ -69,7 +69,7 @@ def test_record_and_reset_to_good_commit(env):
 
 def test_blocked_while_onroad(env):
   op, data, params, base, g = env
-  (params / "IsOnroad").write_text("1")
+  (params / "IsOffroad").write_text("0")
   assert requests.post(base + "/api/update_latest", json={}).status_code == 403
   assert requests.post(base + "/api/nope", json={}).status_code in (403, 404)
 
@@ -89,7 +89,7 @@ def test_recovery_has_no_openpilot_imports():
 
 def test_diagnose_runs(env):
   op, data, params, base, g = env
-  (params / "IsOnroad").write_text("1")  # 주행 중에도 진단은 가능
+  (params / "IsOffroad").write_text("0")  # 주행 중에도 진단은 가능
   assert requests.post(base + "/api/diagnose", json={}).status_code == 200
   job = wait_job()
   assert job["state"] == "완료" and "관리 페이지 프로그램" in job["log"]

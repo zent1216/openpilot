@@ -30,7 +30,8 @@ class Device:
     self.params.put(key, value)
 
   def is_onroad(self) -> bool:
-    return self.params.get_bool("IsOnroad")
+    # 이 버전에는 IsOnroad가 없고 IsOffroad만 있음 (매니저가 시작 시 True, 주행 시작 시 False)
+    return not self.params.get_bool("IsOffroad")
 
   # ---- 정보 ----
   def info(self) -> dict:
