@@ -31,7 +31,7 @@ def cs(set_kph, enabled=True, v_kph=None, buttons=()):
 @pytest.fixture
 def planner(tmp_path, monkeypatch):
   monkeypatch.setenv("JUNPILOT_DIR", str(tmp_path))
-  store.set_settings({"cruise_auto": True, "cruise_style": 1, "curve_slowdown": 2})
+  store.set_settings({"cruise_auto": True, "cruise_style": 1, "curve_slowdown": 2, "nmirror": True})
   clk = Clock()
   return speed.SpeedPlanner(clock=clk), clk
 
