@@ -188,7 +188,10 @@ async function loadStatus() {
   const d = s.device;
   $('#st-dev').innerHTML = row('상태', s.onroad ? '<span class="pill acc">주행 중</span>' : '<span class="pill">정차</span>')
     + row('버전', esc(d.Version)) + row('브랜치', esc(d.GitBranch)) + row('커밋', esc((d.GitCommit||'').slice(0,8)))
-    + row('구글 드라이브', s.drive.configured ? '<span class="pill ok">연결됨</span>' : '<span class="pill bad">미설정</span>');
+    + row('구글 드라이브', s.drive.configured ? '<span class="pill ok">연결됨</span>' : '<span class="pill bad">미설정</span>')
+    + row('엔미러', !s.nmirror ? '-' : s.nmirror.connected
+        ? `<span class="pill ok">연결됨</span> <small>${esc(s.nmirror.peer)}${s.nmirror.road_limit.road_limit_speed ? ' · 제한 ' + s.nmirror.road_limit.road_limit_speed + 'km/h' : ''}</small>`
+        : '<span class="pill">연결 안 됨</span>');
   const c = d.car;
   $('#st-car').innerHTML = !c ? '<small>아직 차량 정보가 없어요. 차에 연결하고 시동을 한 번 켜 주세요.</small>'
     : row('차종', esc(c.fingerprint)) + row('인식 방식', esc(c.fingerprintSource)) + row('차대번호', esc(c.vin))

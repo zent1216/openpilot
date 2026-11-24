@@ -43,6 +43,7 @@ class App:
     self._last_alert: str | None = None
     self.broadcaster = Broadcaster()
     self.collector = None  # 장치에서 main()이 설정
+    self.nmirror = None  # 장치에서 main()이 설정 (엔미러 연동)
     self.new_code()
 
   # ---- 페어링 ----
@@ -325,6 +326,7 @@ def make_handler(app: App):
         if path == "/api/status":
           return self._send(200, {"device": app.dev.info(), "onroad": app.dev.is_onroad(),
                                   "drive": {"configured": bool(drive.get_config()["url"])},
+                                  "nmirror": app.nmirror.status() if app.nmirror else None,
                                   "job": app.job.status() if app.job else None})
         if path == "/api/settings":
           return self._send(200, app.get_settings())
@@ -431,6 +433,12 @@ def main():
     _log_error("시작")
     raise
   threading.Thread(target=httpd.serve_forever, daemon=True).start()  # 웹서버를 먼저 띄운다
+  try:
+    from openpilot.junpilot.nmirror import NMirrorServer
+    app.nmirror = NMirrorServer(ip_addresses=app.dev.ip_addresses)
+    app.nmirror.start()
+  except Exception:
+    _log_error("엔미러 연동")
   try:
     from openpilot.junpilot.collector import Collector
     app.collector = Collector(app.broadcaster)

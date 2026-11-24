@@ -12,6 +12,7 @@ import time
 import numpy as np
 
 from openpilot.junpilot import store
+from openpilot.junpilot.nmirror import limit_from, read_road_limit
 
 KPH = 1 / 3.6
 MIN_TARGET = 30 * KPH
@@ -102,8 +103,12 @@ class SpeedPlanner:
                               max_lat + style["lat_bias"], style["decel"])
 
     # 단속카메라·구간단속: 차량 순정 내비가 알려준 제한속도 (+여유)
+    # 차량 순정 내비가 없으면 엔미러(휴대폰 TMAP)가 보낸 정보를 쓴다
     self.camera_limit = math.inf
     navi = getattr(CS, "junpilotNaviLimit", 0.0)
+    navi_kind = int(getattr(CS, "junpilotNaviKind", 0)) if navi > 0 else 0
+    if navi <= 0 and s.get("nmirror", True):
+      navi, navi_kind = limit_from(read_road_limit(), CS.vEgo, style["decel"])
     if s.get("navi_slowdown", True) and navi > 0:
       self.camera_limit = navi + s.get("navi_margin", 0) * KPH
 
@@ -123,7 +128,8 @@ class SpeedPlanner:
       self.release_t = None
 
     self.debug = {"driver_set": self.driver_set, "curve": lim_curve if math.isfinite(lim_curve) else 0.0,
-                  "camera": self.camera_limit if math.isfinite(self.camera_limit) else 0.0, "target": self.target}
+                  "camera": self.camera_limit if math.isfinite(self.camera_limit) else 0.0, "target": self.target,
+                  "navi_kind": navi_kind, "navi_limit": navi}
     self._write_debug(now)
     return self.target
 

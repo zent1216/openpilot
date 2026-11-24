@@ -126,3 +126,23 @@ def test_navi_limit(planner):
   for _ in range(30):
     t = step(p, clk, c, model(100 * KPH))
   assert t == pytest.approx(100 * KPH)
+
+
+def test_nmirror_fallback(planner, tmp_path, monkeypatch):
+  import json
+  import time
+  from openpilot.junpilot import nmirror
+  path = tmp_path / "nm.json"
+  monkeypatch.setattr(nmirror, "STATE_PATH", str(path))
+  path.write_text(json.dumps({"mono": time.monotonic(), "road_limit": {"cam_limit_speed": 60, "cam_limit_speed_left_dist": 200}}))
+  nmirror._cache["t"] = -1e9
+  p, clk = planner
+  c = cs(100)
+  assert step(p, clk, c, model(100 * KPH)) == pytest.approx(60 * KPH)
+  assert p.debug["navi_kind"] == 1
+  store.set_settings({"nmirror": False})
+  clk.t += 2
+  nmirror._cache["t"] = -1e9
+  for _ in range(30):
+    t = step(p, clk, c, model(100 * KPH))
+  assert t == pytest.approx(100 * KPH)
