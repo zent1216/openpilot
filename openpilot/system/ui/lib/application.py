@@ -18,6 +18,7 @@ from typing import NamedTuple
 from importlib.resources import as_file, files
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware import HARDWARE, PC
+from openpilot.common.basedir import BASEDIR
 from openpilot.system.ui.lib.multilang import FONT_FALLBACK_LANGUAGES, TRANSLATIONS_DIR, multilang
 from openpilot.common.realtime import Ratekeeper
 
@@ -664,10 +665,17 @@ class GuiApplication:
     if language not in self._fallback_fonts:
       chars = set(map(chr, range(32, 127))) | set(EXTRA_FONT_CHARS)
       chars.update(TRANSLATIONS_DIR.joinpath(f"app_{language}.po").read_text(encoding="utf-8"))
+      if language == "ko":  # 준파일럿 한국어화 글자
+        from openpilot.junpilot.ui.ko import all_chars
+        chars.update(all_chars())
       codepoints = sorted(map(ord, chars))
+      font_path = None
+      if language == "ko":  # 준파일럿: 한글 전체가 들어 있는 글꼴 (공식 글꼴은 일부 글자만 있음)
+        font_path = os.path.join(BASEDIR, "openpilot/junpilot/ui/fonts/NotoSansKR-junpilot.otf")
       with as_file(FONT_DIR) as fspath:
-        font = rl.load_font_ex((fspath / NOTO_FONTS[language]).as_posix(), 48,
-                               codepoints, len(codepoints))
+        if font_path is None or not os.path.isfile(font_path):
+          font_path = (fspath / NOTO_FONTS[language]).as_posix()
+        font = rl.load_font_ex(font_path, 48, codepoints, len(codepoints))
       rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
       self._fallback_fonts[language] = font
     return self._fallback_fonts[language]
@@ -708,6 +716,7 @@ class GuiApplication:
 
     def _draw_text_ex_scaled(font, text, position, font_size, spacing, tint):
       font = font_fallback(font)
+      text = multilang.auto_tr(text)  # 준파일럿 한국어화
       return rl._orig_draw_text_ex(font, text, position, font_size * FONT_SCALE, spacing, tint)
 
     rl.draw_text_ex = _draw_text_ex_scaled

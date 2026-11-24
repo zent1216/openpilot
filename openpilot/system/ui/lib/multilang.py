@@ -187,6 +187,13 @@ class Multilang:
   def tr(self, text: str) -> str:
     return self._translations.get(text, text) or text
 
+  def auto_tr(self, text: str) -> str:
+    """준파일럿: 번역 처리가 안 된 화면 글자도 한국어로 바꾼다 (그리기/측정/줄바꿈에서 호출)."""
+    if self._language != "ko" or not isinstance(text, str):
+      return text
+    from openpilot.junpilot.ui.ko import translate
+    return translate(text, self._translations)
+
   def trn(self, singular: str, plural: str, n: int) -> str:
     if singular in self._plurals:
       idx = self._plural_selector(n)

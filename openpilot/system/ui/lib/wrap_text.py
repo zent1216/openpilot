@@ -1,6 +1,7 @@
 import raylib_nb as rl
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.lib.application import font_fallback
+from openpilot.system.ui.lib.multilang import multilang
 
 
 def _break_long_word(font: rl.Font, word: str, font_size: int, max_width: int, spacing: float = 0) -> list[str]:
@@ -42,6 +43,7 @@ _cache: dict[int, list[str]] = {}
 
 def wrap_text(font: rl.Font, text: str, font_size: int, max_width: int, spacing: float = 0) -> list[str]:
   font = font_fallback(font)
+  text = multilang.auto_tr(text)  # 준파일럿 한국어화 (줄바꿈 전에 번역)
   spacing = round(spacing, 4)
   key = hash((font.texture.id, text, font_size, max_width, spacing))
   if key in _cache:

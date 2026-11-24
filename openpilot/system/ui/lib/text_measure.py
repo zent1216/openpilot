@@ -1,5 +1,6 @@
 import raylib_nb as rl
 from openpilot.system.ui.lib.application import FONT_SCALE, font_fallback
+from openpilot.system.ui.lib.multilang import multilang
 
 _cache: dict[int, rl.Vector2] = {}
 
@@ -7,6 +8,7 @@ _cache: dict[int, rl.Vector2] = {}
 def measure_text_cached(font: rl.Font, text: str, font_size: int, spacing: float = 0) -> rl.Vector2:
   """Caches text measurements to avoid redundant calculations."""
   font = font_fallback(font)
+  text = multilang.auto_tr(text)  # 준파일럿 한국어화 (그리기와 같은 글자로 측정)
   spacing = round(spacing, 4)
   key = hash((font.texture.id, text, font_size, spacing))
   if key in _cache:
