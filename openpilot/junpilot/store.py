@@ -25,6 +25,8 @@ JUNPILOT_SETTINGS = {
   "follow_gap": {"type": "int", "default": 3, "min": 1, "max": 4, "label": "차간거리 단계", "ready": False},
   "navi_slowdown": {"type": "bool", "default": True, "label": "단속카메라·구간단속 감속", "ready": True},
   "navi_margin": {"type": "int", "default": 0, "min": -5, "max": 10, "label": "단속 속도 여유 (km/h)", "ready": True},
+  "auto_lane_change": {"type": "choice", "default": 0, "choices": ["끄기 (핸들을 밀어서 변경)", "깜빡이 1초 후", "깜빡이 2초 후", "깜빡이 3초 후"],
+                       "label": "자동 차선 변경", "ready": True},
   "curve_slowdown": {"type": "int", "default": 2, "min": 0, "max": 3, "label": "커브 감속 (0=끔, 3=많이)", "ready": True},
 }
 
