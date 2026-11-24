@@ -34,9 +34,10 @@ def test_multilang_hook_only_for_korean():
 def test_font_has_every_translated_character():
   from fontTools.ttLib import TTFont
   from openpilot.common.basedir import BASEDIR
-  cmap = TTFont(os.path.join(BASEDIR, "openpilot/junpilot/ui/fonts/NotoSansKR-junpilot.otf")).getBestCmap()
-  missing = sorted(c for c in ko.all_chars() if c != "\n" and ord(c) not in cmap)
-  assert not missing, missing
+  for w in ("Regular", "Medium", "SemiBold", "Bold"):
+    cmap = TTFont(os.path.join(BASEDIR, f"openpilot/junpilot/ui/fonts/Pretendard-{w}.otf")).getBestCmap()
+    missing = sorted(c for c in ko.all_chars() if c != "\n" and ord(c) not in cmap)
+    assert not missing, (w, missing)
 
 
 def test_home_screen():

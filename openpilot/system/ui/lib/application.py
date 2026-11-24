@@ -80,6 +80,15 @@ NOTO_FONTS = {
 }
 
 
+# 준파일럿: Inter 굵기 -> 프리텐다드 굵기 (한국어 화면)
+PRETENDARD_WEIGHTS = {
+  "Inter-Regular.ttf": "Pretendard-Regular.otf",
+  "Inter-Medium.ttf": "Pretendard-Medium.otf",
+  "Inter-SemiBold.ttf": "Pretendard-SemiBold.otf",
+  "Inter-Bold.ttf": "Pretendard-Bold.otf",
+}
+
+
 class FontWeight(StrEnum):
   NORMAL = "Inter-Regular.ttf" if BIG_UI else "Inter-Medium.ttf"
   MEDIUM = "Inter-Medium.ttf"
@@ -108,7 +117,7 @@ class TextAlignmentVertical(IntEnum):
 def font_fallback(font: rl.Font) -> rl.Font:
   """Use a Noto fallback for languages not covered by Inter."""
   if multilang.requires_font_fallback():
-    return gui_app.fallback_font()
+    return gui_app.fallback_font(font)
   return font
 
 
@@ -197,6 +206,8 @@ class GuiApplication:
 
     self._fonts: dict[FontWeight, rl.Font] = {}
     self._fallback_fonts: dict[str, rl.Font] = {}
+    self._font_weight_by_texture: dict[int, str] = {}
+    self._fallback_texture_ids: set[int] = set()
     self._font_chars: set[str] = set()
     self._width = width if width is not None else GuiApplication._default_width()
     self._height = height if height is not None else GuiApplication._default_height()
@@ -553,6 +564,7 @@ class GuiApplication:
     for font in self._fallback_fonts.values():
       rl.unload_font(font)
     self._fallback_fonts = {}
+    self._fallback_texture_ids = set()
 
     if not PC:
       self._mouse.stop()
@@ -660,25 +672,35 @@ class GuiApplication:
   def font_chars(self) -> set[str]:
     return self._font_chars
 
-  def fallback_font(self) -> rl.Font:
+  def fallback_font(self, font: rl.Font | None = None) -> rl.Font:
     language = multilang.language
-    if language not in self._fallback_fonts:
+    # 준파일럿: 한국어는 굵기별 프리텐다드 글꼴 사용 (원래 글꼴의 굵기를 따라감)
+    pretendard = None
+    if font is not None and font.texture.id in self._fallback_texture_ids:
+      return font  # 이미 대체 글꼴이면 그대로 (여러 번 거쳐도 굵기 유지)
+    if language == "ko":
+      weight = self._font_weight_by_texture.get(font.texture.id) if font is not None else None
+      pretendard = PRETENDARD_WEIGHTS.get(weight, "Pretendard-Regular.otf")
+      path = os.path.join(BASEDIR, "openpilot/junpilot/ui/fonts", pretendard)
+      if not os.path.isfile(path):
+        pretendard = None
+    key = f"{language}:{pretendard}" if pretendard else language
+    if key not in self._fallback_fonts:
       chars = set(map(chr, range(32, 127))) | set(EXTRA_FONT_CHARS)
       chars.update(TRANSLATIONS_DIR.joinpath(f"app_{language}.po").read_text(encoding="utf-8"))
       if language == "ko":  # 준파일럿 한국어화 글자
         from openpilot.junpilot.ui.ko import all_chars
         chars.update(all_chars())
       codepoints = sorted(map(ord, chars))
-      font_path = None
-      if language == "ko":  # 준파일럿: 한글 전체가 들어 있는 글꼴 (공식 글꼴은 일부 글자만 있음)
-        font_path = os.path.join(BASEDIR, "openpilot/junpilot/ui/fonts/NotoSansKR-junpilot.otf")
-      with as_file(FONT_DIR) as fspath:
-        if font_path is None or not os.path.isfile(font_path):
-          font_path = (fspath / NOTO_FONTS[language]).as_posix()
-        font = rl.load_font_ex(font_path, 48, codepoints, len(codepoints))
-      rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
-      self._fallback_fonts[language] = font
-    return self._fallback_fonts[language]
+      if pretendard:
+        loaded = rl.load_font_ex(os.path.join(BASEDIR, "openpilot/junpilot/ui/fonts", pretendard), 80, codepoints, len(codepoints))
+      else:
+        with as_file(FONT_DIR) as fspath:
+          loaded = rl.load_font_ex((fspath / NOTO_FONTS[language]).as_posix(), 48, codepoints, len(codepoints))
+      rl.set_texture_filter(loaded.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
+      self._fallback_fonts[key] = loaded
+      self._fallback_texture_ids.add(loaded.texture.id)
+    return self._fallback_fonts[key]
 
   @property
   def width(self):
@@ -706,6 +728,7 @@ class GuiApplication:
         if font_weight_file != FontWeight.UNIFONT:
           rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
         self._fonts[font_weight_file] = font
+        self._font_weight_by_texture[font.texture.id] = font_weight_file.value
     if multilang.requires_font_fallback():
       self.fallback_font()
 
