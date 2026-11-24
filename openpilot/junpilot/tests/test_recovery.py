@@ -80,5 +80,16 @@ def test_restore_backup_requires_backup(env):
 
 
 def test_recovery_has_no_openpilot_imports():
-  src = open(recovery.__file__).read()
-  assert "from openpilot" not in src.replace("from openpilot.junpilot.recovery", "") and "import openpilot" not in src
+  import ast
+  tree = ast.parse(open(recovery.__file__).read())
+  mods = [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
+  mods += [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
+  assert not [m for m in mods if m.startswith("openpilot")]
+
+
+def test_diagnose_runs(env):
+  op, data, params, base, g = env
+  (params / "IsOnroad").write_text("1")  # 주행 중에도 진단은 가능
+  assert requests.post(base + "/api/diagnose", json={}).status_code == 200
+  job = wait_job()
+  assert job["state"] == "완료" and "관리 페이지 프로그램" in job["log"]

@@ -98,11 +98,22 @@ def _run_job(name: str, cmd: str):
 REBOOT = "sync; sleep 2; sudo reboot"
 
 
+DIAGNOSE = f"""
+echo '== 관리 페이지 프로그램 =='; pgrep -af 'junpilot.web.server' || echo '실행 중 아님'
+echo; echo '== 열린 포트 =='; (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -E ':808[0-9]' || echo '8082 없음'
+echo; echo '== 불러오기 시험 =='; cd {OP_DIR} && timeout 30 python3 -c 'import openpilot.junpilot.web.server; print("불러오기 성공")' 2>&1 | tail -25
+echo; echo '== 서버 오류 기록 =='; tail -60 {DATA_DIR}/server_error.log 2>/dev/null || echo '없음'
+echo; echo '== 시스템 기록(junpilot) =='; grep -h 'junpilot' $(ls -t /data/log/swaglog.* 2>/dev/null | head -3) 2>/dev/null | tail -30 || echo '없음'
+"""
+
+
 def action(name: str, body: dict):
-  if name != "reboot" and is_onroad():
+  if name not in ("reboot", "diagnose") and is_onroad():
     raise PermissionError("주행 중에는 할 수 없어요. 시동을 끈 뒤 다시 시도해 주세요.")
   if name == "reboot":
     _run_job("재부팅", REBOOT)
+  elif name == "diagnose":
+    _run_job("진단", DIAGNOSE)
   elif name == "reset_good":
     commit = str(body.get("commit", ""))
     if commit not in [c["commit"] for c in good_commits()]:
@@ -151,7 +162,8 @@ button.main{background:#ff8a3d;color:#1a1205}pre{white-space:pre-wrap;word-break
 <div class="card"><h2>기타</h2>
 <button class="main" onclick="act('update_latest','최신 버전을 다시 받고 재부팅할까요?')">최신 버전 다시 받기</button>
 <button id="bk" onclick="act('restore_backup','업데이트 직전 버전으로 되돌리고 재부팅할까요?')">업데이트 직전 버전 복원</button>
-<button onclick="act('reboot','재부팅할까요?')">재부팅</button></div>
+<button onclick="act('reboot','재부팅할까요?')">재부팅</button>
+<button onclick="act('diagnose','관리 페이지(8082) 문제를 진단할까요?')">진단 (관리 페이지가 안 열릴 때)</button></div>
 <div class="card"><h2>작업 기록</h2><pre id="job">없음</pre></div>
 <div class="card"><h2>시작 기록 (launch_log)</h2><pre id="log"></pre></div>
 </main><script>
@@ -163,7 +175,7 @@ $('#good').innerHTML=s.good.length?s.good.map(g=>`<button onclick="act('reset_go
 $('#bk').style.display=s.backup?'':'none';$('#log').textContent=s.launch_log||'없음';
 if(s.job&&s.job.name)$('#job').textContent=`[${s.job.state}] ${s.job.name}\\n\\n${s.job.log}`}
 async function act(a,q,body={}){if(!confirm(q))return;const r=await fetch('/api/'+a,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();
-$('#msg').innerHTML=`<div class="msg ${r.ok?'ok':''}">${esc(r.ok?'작업을 시작했어요. 끝나면 자동으로 재부팅돼요.':j.error)}</div>`;load()}
+$('#msg').innerHTML=`<div class="msg ${r.ok?'ok':''}">${esc(r.ok?(a==='diagnose'?'진단을 시작했어요. 아래 작업 기록을 확인해 주세요.':'작업을 시작했어요. 끝나면 자동으로 재부팅돼요.'):j.error)}</div>`;load()}
 load();setInterval(load,3000);
 </script></body></html>"""
 

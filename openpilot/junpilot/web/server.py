@@ -386,33 +386,51 @@ def make_handler(app: App):
   return Handler
 
 
+def _log_error(where: str):
+  """오류를 /data/junpilot/server_error.log 에 남김 (복구 페이지 '진단'에서 확인)."""
+  import traceback
+  try:
+    with open(os.path.join(store.data_dir(), "server_error.log"), "a") as f:
+      f.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {where}\n{traceback.format_exc()}\n")
+  except OSError:
+    pass
+
+
 def main():
   from openpilot.junpilot.device import Device
-  from openpilot.junpilot.collector import Collector
-  app = App(Device())
-  app.collector = Collector(app.broadcaster)
-  app.collector.start()
-  ThreadingHTTPServer.daemon_threads = True
-  httpd = ThreadingHTTPServer(("0.0.0.0", PORT), make_handler(app))
-  threading.Thread(target=httpd.serve_forever, daemon=True).start()
-  was_onroad = app.dev.is_onroad()
+  try:
+    app = App(Device())
+    ThreadingHTTPServer.daemon_threads = True
+    httpd = ThreadingHTTPServer(("0.0.0.0", PORT), make_handler(app))
+  except Exception:
+    _log_error("시작")
+    raise
+  threading.Thread(target=httpd.serve_forever, daemon=True).start()  # 웹서버를 먼저 띄운다
+  try:
+    from openpilot.junpilot.collector import Collector
+    app.collector = Collector(app.broadcaster)
+    app.collector.start()
+  except Exception:
+    _log_error("주행 기록기")
+  was_onroad = False
   started = time.monotonic()
   recorded = False
   while True:
-    if not recorded and time.monotonic() - started > 120:
-      # 2분 이상 정상 동작한 버전은 복구 서버의 '되돌리기' 목록에 기록
-      try:
+    try:
+      onroad = app.dev.is_onroad()
+      if not recorded and time.monotonic() - started > 120:
+        # 2분 이상 정상 동작한 버전은 복구 서버의 '되돌리기' 목록에 기록
         from openpilot.common.basedir import BASEDIR
         from openpilot.junpilot.recovery import record_good_commit
         record_good_commit(op_dir=BASEDIR, data_dir=store.data_dir())
-      except Exception:
-        pass
-      recorded = True
-    onroad = app.dev.is_onroad()
-    if was_onroad and not onroad:
-      app.new_code()  # 시동 끌 때마다 새 코드를 잠시 표시
-    was_onroad = onroad
-    app.update_alert()
+        recorded = True
+      if was_onroad and not onroad:
+        app.new_code()  # 시동 끌 때마다 새 코드를 잠시 표시
+      was_onroad = onroad
+      app.update_alert()
+    except Exception:
+      _log_error("반복 작업")
+      time.sleep(10)
     time.sleep(2)
 
 
