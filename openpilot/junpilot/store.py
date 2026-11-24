@@ -25,8 +25,10 @@ JUNPILOT_SETTINGS = {
   "follow_gap": {"type": "int", "default": 3, "min": 1, "max": 4, "label": "차간거리 단계", "ready": False},
   "navi_slowdown": {"type": "bool", "default": True, "label": "단속카메라·구간단속 감속", "ready": True},
   "navi_margin": {"type": "int", "default": 0, "min": -5, "max": 10, "label": "단속 속도 여유 (km/h)", "ready": True},
-  "auto_lane_change": {"type": "choice", "default": 0, "choices": ["끄기 (핸들을 밀어서 변경)", "깜빡이 1초 후", "깜빡이 2초 후", "깜빡이 3초 후"],
-                       "label": "자동 차선 변경", "ready": True},
+  # 0=사용 안 함, 1=수동(핸들을 밀어서), 2~4=깜빡이 1~3초 후 자동
+  "lane_change_mode": {"type": "choice", "default": 1,
+                       "choices": ["사용 안 함", "수동 (핸들을 밀어서 변경)", "깜빡이 1초 후", "깜빡이 2초 후", "깜빡이 3초 후"],
+                       "label": "차선 변경", "ready": True},
   "curve_slowdown": {"type": "int", "default": 2, "min": 0, "max": 3, "label": "커브 감속 (0=끔, 3=많이)", "ready": True},
 }
 
@@ -55,6 +57,8 @@ def save(name: str, value) -> None:
 
 def get_settings() -> dict:
   saved = load("settings.json", {})
+  if "lane_change_mode" not in saved and "auto_lane_change" in saved:  # 예전 설정(0=수동, 1~3=초) 옮기기
+    saved["lane_change_mode"] = int(saved["auto_lane_change"]) + 1
   return {k: saved.get(k, spec["default"]) for k, spec in JUNPILOT_SETTINGS.items()}
 
 

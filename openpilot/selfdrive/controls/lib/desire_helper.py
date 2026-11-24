@@ -16,6 +16,7 @@ class DesireHelper:
     # 측후방 감지(BSM)가 있는 차에서만 동작하고, 깜빡이 한 번에 한 번만 바꾼다
     self.enable_bsm = enable_bsm
     self.auto_delay = 0.0
+    self.lane_change_enabled = True
     self.auto_settings_t = 0.0
     self.pre_timer = 0.0
     self.auto_used = False
@@ -36,9 +37,11 @@ class DesireHelper:
     self.auto_settings_t = 1.0  # 1초마다 설정 다시 읽기
     try:
       from openpilot.junpilot.store import get_settings
-      self.auto_delay = float(get_settings().get("auto_lane_change", 0))
+      mode = int(get_settings().get("lane_change_mode", 1))
     except Exception:
-      self.auto_delay = 0.0
+      mode = 1
+    self.lane_change_enabled = mode != 0
+    self.auto_delay = float(max(mode - 1, 0))
 
   def update(self, carstate, lateral_active, lane_change_prob):
     self._refresh_auto_settings()
@@ -51,7 +54,8 @@ class DesireHelper:
       self.lane_change_direction = LaneChangeDirection.none
       self.lane_change_timer = 0.0
     else:
-      if self.lane_change_state == LaneChangeState.off and one_blinker and not self.prev_one_blinker and not below_lane_change_speed:
+      if (self.lane_change_state == LaneChangeState.off and one_blinker and not self.prev_one_blinker and not below_lane_change_speed
+          and self.lane_change_enabled):
         self.lane_change_state = LaneChangeState.preLaneChange
         self.lane_change_timer = 0.0
         self.pre_timer = 0.0

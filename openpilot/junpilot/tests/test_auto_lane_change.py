@@ -30,14 +30,14 @@ def test_off_by_default_needs_nudge():
 
 
 def test_auto_after_delay():
-  store.set_settings({"auto_lane_change": 2})
+  store.set_settings({"lane_change_mode": 3})
   dh = DesireHelper(enable_bsm=True)
   assert run(dh, cs(left=True), 1.5) == LaneChangeState.preLaneChange
   assert run(dh, cs(left=True), 0.8) == LaneChangeState.laneChangeStarting
 
 
 def test_auto_waits_for_blindspot_and_needs_bsm():
-  store.set_settings({"auto_lane_change": 1})
+  store.set_settings({"lane_change_mode": 2})
   dh = DesireHelper(enable_bsm=True)
   assert run(dh, cs(right=True, bsm_r=True), 5) == LaneChangeState.preLaneChange
   assert run(dh, cs(right=True), 0.5) == LaneChangeState.preLaneChange  # 비워진 뒤 다시 1초 기다림
@@ -47,7 +47,7 @@ def test_auto_waits_for_blindspot_and_needs_bsm():
 
 
 def test_auto_once_per_blinker_and_min_speed():
-  store.set_settings({"auto_lane_change": 1})
+  store.set_settings({"lane_change_mode": 2})
   dh = DesireHelper(enable_bsm=True)
   run(dh, cs(left=True), 1.2)
   assert dh.lane_change_state == LaneChangeState.laneChangeStarting
@@ -57,3 +57,16 @@ def test_auto_once_per_blinker_and_min_speed():
   assert run(dh, cs(left=True), 1.2) == LaneChangeState.laneChangeStarting  # 깜빡이를 다시 켜면 가능
   slow = DesireHelper(enable_bsm=True)
   assert run(slow, cs(left=True, v=10.0), 3) == LaneChangeState.preLaneChange
+
+
+def test_disabled_never_changes():
+  store.set_settings({"lane_change_mode": 0})
+  dh = DesireHelper(enable_bsm=True)
+  assert run(dh, cs(left=True, pressed=True, torque=1.0), 3) == LaneChangeState.off
+
+
+def test_old_setting_migrates():
+  store.save("settings.json", {"auto_lane_change": 0})
+  assert store.get_settings()["lane_change_mode"] == 1
+  store.save("settings.json", {"auto_lane_change": 2})
+  assert store.get_settings()["lane_change_mode"] == 3
