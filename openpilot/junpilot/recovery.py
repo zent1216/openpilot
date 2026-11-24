@@ -103,7 +103,7 @@ echo '== 관리 페이지 프로그램 =='; pgrep -af 'junpilot.web.server' || e
 echo; echo '== 열린 포트 =='; (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -E ':808[0-9]' || echo '8082 없음'
 echo; echo '== 불러오기 시험 =='; cd {OP_DIR} && timeout 30 python3 -c 'import openpilot.junpilot.web.server; print("불러오기 성공")' 2>&1 | tail -25
 echo; echo '== 서버 오류 기록 =='; tail -60 {DATA_DIR}/server_error.log 2>/dev/null || echo '없음'
-echo; echo '== 시스템 기록(junpilot) =='; grep -h 'junpilot' $(ls -t /data/log/swaglog.* 2>/dev/null | head -3) 2>/dev/null | tail -30 || echo '없음'
+echo; echo '== 시스템 기록(관리 페이지 프로그램만) =='; grep -h '"daemon": "junpilotd"' $(ls -t /data/log/swaglog.* 2>/dev/null | head -5) 2>/dev/null | tail -10 | cut -c1-600 || echo '없음'
 """
 
 

@@ -259,6 +259,25 @@ def make_handler(app: App):
         return False
       return True
 
+    def _safe(self, fn, method: str):
+      """어떤 오류가 나도 연결을 그냥 끊지 않고 오류 내용을 돌려준다 (브라우저의 'Failed to fetch' 방지)."""
+      try:
+        fn()
+      except (BrokenPipeError, ConnectionResetError):
+        pass
+      except Exception as e:
+        _log_error(f"{method} {self.path}")
+        try:
+          self._send(500, {"error": f"서버 오류가 발생했어요: {type(e).__name__}: {e}"})
+        except OSError:
+          pass
+
+    def do_GET(self):
+      self._safe(self._get, "GET")
+
+    def do_POST(self):
+      self._safe(self._post, "POST")
+
     def _stream(self):
       """서버 전송 이벤트(SSE): 휴대폰 앱이 실시간 상태와 이벤트를 받는다."""
       q = app.broadcaster.subscribe()
@@ -282,7 +301,7 @@ def make_handler(app: App):
       finally:
         app.broadcaster.unsubscribe(q)
 
-    def do_GET(self):
+    def _get(self):
       if not self._guard():
         return
       path = urlparse(self.path).path
@@ -331,11 +350,14 @@ def make_handler(app: App):
                               headers={"Content-Disposition": f'attachment; filename="{name}"'})
       except FileNotFoundError as e:
         return self._send(404, {"error": str(e)})
+      except (KeyError, ValueError, IndexError) as e:
+        return self._send(400, {"error": f"잘못된 요청이에요: {e}"})
       except Exception as e:
-        return self._send(400, {"error": str(e)})
+        _log_error(f"GET {path}")
+        return self._send(500, {"error": f"서버 오류가 발생했어요: {type(e).__name__}: {e}"})
       self._send(404, {"error": "없는 주소예요."})
 
-    def do_POST(self):
+    def _post(self):
       if not self._guard():
         return
       path = urlparse(self.path).path
@@ -381,6 +403,9 @@ def make_handler(app: App):
         return self._send(403, {"error": str(e)})
       except (KeyError, ValueError, RuntimeError, FileNotFoundError) as e:
         return self._send(400, {"error": str(e)})
+      except Exception as e:
+        _log_error(f"POST {path}")
+        return self._send(500, {"error": f"서버 오류가 발생했어요: {type(e).__name__}: {e}"})
       self._send(404, {"error": "없는 주소예요."})
 
   return Handler

@@ -173,3 +173,17 @@ def test_app_download(env, tmp_path, monkeypatch):
   assert requests.get(base + "/api/app/version").json()["versionCode"] == 3
   r = requests.get(base + "/app/junpilot.apk")
   assert r.content == b"PK-apk" and r.headers["Content-Type"] == "application/vnd.android.package-archive"
+
+
+def test_unexpected_error_returns_message(env, monkeypatch):
+  app, dev, base = env
+
+  def boom(*a, **k):
+    raise TypeError("알림 저장 실패")
+  monkeypatch.setattr(dev, "set_pairing_alert", boom)
+  app._last_alert = None
+  r = requests.post(base + "/api/show_code", json={})
+  assert r.status_code == 500 and "TypeError" in r.json()["error"]
+  monkeypatch.setattr(dev, "is_onroad", boom)
+  r = requests.get(base + "/api/ping")
+  assert r.status_code == 500 and "알림 저장 실패" in r.json()["error"]
