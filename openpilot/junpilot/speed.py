@@ -4,7 +4,9 @@
 - 운전자 설정속도는 따로 기억한다. 자동으로 내린 뒤에도 커브를 지나면 원래 속도로 돌아간다.
 - 실제 가감속은 순정 스마트크루즈가 한다. 여기서는 설정속도만 정한다.
 """
+import json
 import math
+import os
 import time
 
 import numpy as np
@@ -22,6 +24,9 @@ STYLE = {
 }
 # 커브 감속 정도별 허용 횡가속도 (m/s^2). 0은 끔
 CURVE_LAT = {0: None, 1: 2.6, 2: 2.2, 3: 1.8}
+
+# 관리 페이지 서버(주행 기록기)가 읽는 계획기 상태. 장치에서만 기록 (PC 테스트에서는 끔)
+DEBUG_PATH = os.getenv("JUNPILOT_SPEED_DEBUG", "/dev/shm/junpilot_speed.json" if os.path.isdir("/dev/shm") and os.path.exists("/AGNOS") else "")
 
 RELEASE_MARGIN = 3 * KPH  # 제한이 이만큼 넉넉해져야 속도를 다시 올림
 RELEASE_TIME = 1.0
@@ -55,6 +60,7 @@ class SpeedPlanner:
     self.release_t: float | None = None
     self.camera_limit = math.inf
     self.debug: dict = {}
+    self.debug_t = 0.0
 
   def _refresh_settings(self):
     now = self.clock()
@@ -84,6 +90,8 @@ class SpeedPlanner:
 
     if not s["cruise_auto"] or not cruise or self.driver_set <= 0 or self.driver_pending_t is not None:
       self.target = 0.0
+      self.debug = {"driver_set": self.driver_set, "curve": 0.0, "camera": 0.0, "target": 0.0}
+      self._write_debug(now)
       return 0.0
 
     style = STYLE.get(s["cruise_style"], STYLE[1])
@@ -114,5 +122,19 @@ class SpeedPlanner:
     else:
       self.release_t = None
 
-    self.debug = {"driver_set": self.driver_set, "curve": lim_curve, "camera": self.camera_limit, "target": self.target}
+    self.debug = {"driver_set": self.driver_set, "curve": lim_curve if math.isfinite(lim_curve) else 0.0,
+                  "camera": self.camera_limit if math.isfinite(self.camera_limit) else 0.0, "target": self.target}
+    self._write_debug(now)
     return self.target
+
+  def _write_debug(self, now: float):
+    if not DEBUG_PATH or now - self.debug_t < 0.5:
+      return
+    self.debug_t = now
+    try:
+      tmp = DEBUG_PATH + ".tmp"
+      with open(tmp, "w") as f:
+        json.dump({**self.debug, "mono": now}, f)
+      os.replace(tmp, DEBUG_PATH)
+    except OSError:
+      pass

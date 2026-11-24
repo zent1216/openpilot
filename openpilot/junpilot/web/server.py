@@ -9,13 +9,15 @@ import hmac
 import ipaddress
 import json
 import os
+import queue
 import secrets
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, unquote
 
-from openpilot.junpilot import store, drive
+from openpilot.junpilot import store, drive, tracker
+from openpilot.junpilot.collector import Broadcaster, drives_dir
 from openpilot.junpilot.device import OFFICIAL_SETTINGS
 
 PORT = int(os.getenv("JUNPILOT_PORT", "8082"))
@@ -38,6 +40,8 @@ class App:
     self.locked_until = 0.0
     self.job: drive.UploadJob | None = None
     self._last_alert: str | None = None
+    self.broadcaster = Broadcaster()
+    self.collector = None  # 장치에서 main()이 설정
     self.new_code()
 
   # ---- 페어링 ----
@@ -112,6 +116,19 @@ class App:
       self.dev.put_param(k, v)
     if store_changes:
       store.set_settings(store_changes)
+
+  # ---- 주행 리포트 / 맞춤 튜닝 ----
+  def tuning(self) -> dict:
+    return {"suggestions": tracker.tuning_suggestions(tracker.list_drives(drives_dir()), store.get_settings())}
+
+  def apply_tuning(self, body: dict):
+    key = body.get("key")
+    if key not in store.JUNPILOT_SETTINGS:
+      raise ValueError("적용할 수 없는 항목이에요.")
+    allowed = {s["key"]: s["value"] for s in self.tuning()["suggestions"] if s.get("key")}
+    if allowed.get(key) != body.get("value"):
+      raise ValueError("추천 내용이 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.")
+    self.set_settings({"junpilot": {key: body["value"]}})
 
   # ---- 주행 기록 ----
   def routes(self) -> list[dict]:
@@ -200,6 +217,9 @@ def make_handler(app: App):
       pass
 
     def _token(self):
+      auth = self.headers.get("Authorization") or ""
+      if auth.startswith("Bearer "):
+        return auth[7:].strip()
       for part in (self.headers.get("Cookie") or "").split(";"):
         k, _, v = part.strip().partition("=")
         if k == COOKIE:
@@ -230,6 +250,29 @@ def make_handler(app: App):
         return False
       return True
 
+    def _stream(self):
+      """서버 전송 이벤트(SSE): 휴대폰 앱이 실시간 상태와 이벤트를 받는다."""
+      q = app.broadcaster.subscribe()
+      try:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        self.wfile.write(b": hello\n\n")
+        self.wfile.flush()
+        while True:
+          try:
+            msg = q.get(timeout=10)
+          except queue.Empty:
+            msg = ": ping\n\n"  # 연결 유지
+          self.wfile.write(msg.encode())
+          self.wfile.flush()
+      except (BrokenPipeError, ConnectionResetError, OSError):
+        pass
+      finally:
+        app.broadcaster.unsubscribe(q)
+
     def do_GET(self):
       if not self._guard():
         return
@@ -250,6 +293,16 @@ def make_handler(app: App):
           return self._send(200, app.get_settings())
         if path == "/api/routes":
           return self._send(200, {"routes": app.routes()})
+        if path == "/api/state":
+          return self._send(200, {"state": app.collector.last_state if app.collector else {}})
+        if path == "/api/drives":
+          return self._send(200, {"drives": tracker.list_drives(drives_dir())})
+        if path.startswith("/api/drives/"):
+          return self._send(200, tracker.load_drive(drives_dir(), path.rsplit("/", 1)[1]))
+        if path == "/api/tuning":
+          return self._send(200, app.tuning())
+        if path == "/api/events":
+          return self._stream()
         if path == "/api/job":
           return self._send(200, {"job": app.job.status() if app.job else None})
         if path.startswith("/api/download/"):
@@ -274,7 +327,8 @@ def make_handler(app: App):
           token = app.pair(str(body.get("code", "")), str(body.get("name", "")))
           app.update_alert()
           cookie = f"{COOKIE}={token}; Path=/; Max-Age=315360000; HttpOnly; SameSite=Strict"
-          return self._send(200, {"ok": True}, headers={"Set-Cookie": cookie})
+          res = {"ok": True, "token": token} if body.get("client") == "app" else {"ok": True}
+          return self._send(200, res, headers={"Set-Cookie": cookie})
         if path == "/api/show_code":
           if not app.dev.is_onroad():
             app.new_code()
@@ -285,6 +339,9 @@ def make_handler(app: App):
         if path == "/api/settings":
           app.set_settings(body)
           return self._send(200, app.get_settings())
+        if path == "/api/tuning/apply":
+          app.apply_tuning(body)
+          return self._send(200, app.tuning())
         if path == "/api/drive":
           drive.set_config(str(body.get("url", "")), str(body.get("secret", "")))
           return self._send(200, {"ok": True})
@@ -313,7 +370,11 @@ def make_handler(app: App):
 
 def main():
   from openpilot.junpilot.device import Device
+  from openpilot.junpilot.collector import Collector
   app = App(Device())
+  app.collector = Collector(app.broadcaster)
+  app.collector.start()
+  ThreadingHTTPServer.daemon_threads = True
   httpd = ThreadingHTTPServer(("0.0.0.0", PORT), make_handler(app))
   threading.Thread(target=httpd.serve_forever, daemon=True).start()
   was_onroad = app.dev.is_onroad()
