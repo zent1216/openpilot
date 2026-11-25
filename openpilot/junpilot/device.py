@@ -38,6 +38,8 @@ class Device:
     out = {k: self.params.get(k) for k in ("Version", "GitBranch", "GitCommit", "DongleId", "UpdaterState",
                                              "UpdaterCurrentDescription", "UpdaterNewDescription")}
     out["UpdateAvailable"] = self.params.get_bool("UpdateAvailable")
+    out["UpdaterFetchAvailable"] = self.params.get_bool("UpdaterFetchAvailable")
+    out["UpdateFailedCount"] = self.params.get("UpdateFailedCount") or 0
     out["car"] = None
     cp_bytes = self.params.get("CarParamsPersistent")
     if cp_bytes:
@@ -76,15 +78,18 @@ class Device:
     from openpilot.selfdrive.selfdrived.alertmanager import set_offroad_alert
     set_offroad_alert("Offroad_JunpilotPairing", show, text)
 
-  def check_update(self) -> bool:
+  def check_update(self, download: bool = False) -> bool:
+    """공식 업데이터에 신호를 보낸다. SIGUSR1=확인만, SIGHUP=받기까지 (장치 화면의 '업데이트 받기'와 같음)."""
+    sig = signal.SIGHUP if download else signal.SIGUSR1
     out = subprocess.run(["pgrep", "-f", "openpilot.system.updated.updated"], capture_output=True, text=True).stdout.split()
+    ok = False
     for pid in out:
       try:
-        os.kill(int(pid), signal.SIGUSR1)
-        return True
+        os.kill(int(pid), sig)
+        ok = True
       except (OSError, ValueError):
         pass
-    return False
+    return ok
 
   def reboot(self):
     self.params.put_bool("DoReboot", True)

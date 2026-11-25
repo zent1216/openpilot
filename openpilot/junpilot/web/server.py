@@ -411,6 +411,10 @@ def make_handler(app: App):
           return self._send(200, {"job": app.send(body)})
         if path == "/api/update/check":
           return self._send(200, {"ok": app.dev.check_update()})
+        if path == "/api/update/download":
+          if app.dev.is_onroad():
+            return self._send(403, {"error": "주행 중에는 업데이트를 받을 수 없어요. 시동을 끈 뒤 다시 시도해 주세요."})
+          return self._send(200, {"ok": app.dev.check_update(download=True)})
         if path == "/api/reboot":
           if app.dev.is_onroad():
             raise PermissionError("주행 중에는 재부팅할 수 없어요.")

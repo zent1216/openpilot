@@ -87,8 +87,12 @@
       <h2>업데이트</h2>
       <div id="st-upd"></div>
       <div class="grid2">
-        <button class="b ghost" onclick="post('/api/update/check').then(()=>note('업데이트 확인을 요청했어요. 잠시 뒤 새로고침해 주세요.','ok'))">업데이트 확인</button>
-        <button class="b ghost" onclick="reboot()">재부팅</button>
+        <button class="b" onclick="updateAct('download')">업데이트 받기</button>
+        <button class="b ghost" onclick="updateAct('check')">새 버전 확인만</button>
+      </div>
+      <div style="height:8px"></div>
+      <div class="grid2">
+        <button class="b ghost" onclick="reboot()">재부팅 (받은 업데이트 적용)</button>
       </div>
       <div style="height:8px"></div>
       <button class="b ghost" onclick="location.href=`http://${location.hostname}:8083/`">복구 페이지 열기</button>
@@ -178,6 +182,14 @@ async function pair() {
   try { await post('/api/pair', {code: $('#code').value, name: $('#devname').value}); note('연결됐어요.', 'ok'); start(); } catch {}
 }
 async function makePairCode() { try { const j = await post('/api/pair_code'); $('#pc-code').textContent = j.code; note(`${j.minutes}분 안에 새 기기에서 이 코드를 입력해 주세요.`, 'info'); } catch {} }
+async function updateAct(kind) {
+  try {
+    const j = await post('/api/update/' + kind);
+    if (!j.ok) { note('업데이트 프로그램이 응답하지 않아요. 잠시 뒤 다시 시도하거나 복구 페이지를 써 주세요.', 'err'); return; }
+    note(kind === 'download' ? '업데이트를 받고 있어요. 끝나면 "재부팅하면 적용돼요"가 떠요.' : '새 버전을 확인하고 있어요.', 'info');
+    for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 3000)); try { await loadStatus(); } catch {} }
+  } catch {}
+}
 async function showCode() { try { const j = await post('/api/show_code'); note(j.pairing ? '장치 화면을 확인해 주세요.' : '주행 중에는 코드를 표시할 수 없어요.', j.pairing ? 'info' : 'err'); } catch {} }
 
 function go(t) {
@@ -205,8 +217,11 @@ async function loadStatus() {
     : row('차종', esc(c.fingerprint)) + row('인식 방식', esc(c.fingerprintSource)) + row('차대번호', esc(c.vin))
       + `<details style="margin-top:8px"><summary class="k">펌웨어 값 (${c.fw.length}개)</summary><div class="fw">${c.fw.map(f => esc(`${f.ecu} 0x${f.address.toString(16)}${f.subAddress?'/'+f.subAddress:''}  ${f.version}`)).join('\n')}</div></details>`;
   fetch('/api/app/version').then(r => r.json()).then(v => { $('#app-dl').textContent = v.versionCode ? `휴대폰 앱 내려받기 (1.0.${v.versionCode})` : '휴대폰 앱 내려받기'; }).catch(() => {});
-  $('#st-upd').innerHTML = row('상태', esc(d.UpdaterState || '-')) + row('현재', esc(d.UpdaterCurrentDescription || '-'))
-    + (d.UpdateAvailable ? row('새 버전', `<span class="pill ok">${esc(d.UpdaterNewDescription)}</span>`) : '');
+  const st = {idle: '대기 중', 'checking...': '확인하는 중…', 'downloading...': '받는 중…', 'finalizing update...': '설치 준비 중…'}[d.UpdaterState] || d.UpdaterState || '-';
+  $('#st-upd').innerHTML = row('상태', esc(st)) + row('현재', esc(d.UpdaterCurrentDescription || '-'))
+    + (d.UpdaterFetchAvailable && !d.UpdateAvailable ? row('새 버전', '<span class="pill">받을 수 있어요 → 업데이트 받기</span>') : '')
+    + (d.UpdateAvailable ? row('새 버전', `<span class="pill ok">받기 완료 · 재부팅하면 적용돼요</span><br><small>${esc(d.UpdaterNewDescription)}</small>`) : '')
+    + (Number(d.UpdateFailedCount) > 0 ? row('실패', `<span class="pill bad">${esc(d.UpdateFailedCount)}회 · 인터넷 연결을 확인해 주세요</span>`) : '');
 }
 
 async function loadRoutes() {
