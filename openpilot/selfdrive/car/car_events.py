@@ -18,6 +18,10 @@ class CarEvents:
     self.CP = CP
 
     self.steering_unpressed = 0
+    # 준파일럿: 조향만 단독(LFA 버튼). 브레이크·크루즈 해제에도 조향 유지
+    self.lat_only_capable = CP.carFingerprint == "KIA_PV5"
+    self.lat_only = False
+    self.lat_only_frames = 0
     self.low_speed_alert = False
     self.no_steer_warning = False
     self.silent_steer_warning = True
@@ -26,7 +30,7 @@ class CarEvents:
     if self.CP.brand in ('body', 'mock'):
       return Events()
 
-    events = self.create_common_events(CS, CS_prev)
+    events = self.create_common_events(CS, CS_prev, CC)
 
     if self.CP.brand == 'chrysler':
       # Low speed steer alert hysteresis logic
@@ -93,7 +97,27 @@ class CarEvents:
 
     return events
 
-  def create_common_events(self, CS: structs.CarState, CS_prev: car.CarState):
+  def _update_lat_only(self, CS, CC, events) -> None:
+    """준파일럿: LFA 버튼으로 조향만 켜고 끈다. 크루즈가 켜질 때도 조향만 모드로 들어가 브레이크·해제에도 조향 유지."""
+    enabled = bool(getattr(CC, "enabled", False))
+    self.lat_only_frames += 1
+    for b in CS.buttonEvents:
+      if b.type == ButtonType.lkas and b.pressed:
+        if enabled:
+          self.lat_only = False
+          events.add(EventName.buttonCancel)
+        else:
+          self.lat_only = True
+          self.lat_only_frames = 0
+          events.add(EventName.buttonEnable)
+    if CS.cruiseState.enabled:
+      self.lat_only = True
+      self.lat_only_frames = 0
+    # 다른 이유로 꺼졌으면 상태 정리 (켜는 순간 1초는 기다림)
+    if self.lat_only and not enabled and self.lat_only_frames > int(1.0 / DT_CTRL):
+      self.lat_only = False
+
+  def create_common_events(self, CS: structs.CarState, CS_prev: car.CarState, CC=None):
     events = Events()
 
     CI = interfaces[self.CP.carFingerprint]
@@ -181,10 +205,12 @@ class CarEvents:
 
     # we engage when pcm is active (rising edge)
     # enabling can optionally be blocked by the car interface
+    if self.lat_only_capable:
+      self._update_lat_only(CS, CC, events)
     if pcm_enable:
       if CS.cruiseState.enabled and not CS_prev.cruiseState.enabled and not CS.blockPcmEnable:
         events.add(EventName.pcmEnable)
-      elif not CS.cruiseState.enabled:
+      elif not CS.cruiseState.enabled and not self.lat_only:
         events.add(EventName.pcmDisable)
 
     return events
