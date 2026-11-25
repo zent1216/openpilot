@@ -97,6 +97,8 @@ def _run_job(name: str, cmd: str):
 
 
 REBOOT = "sync; sleep 2; sudo reboot"
+# 공식 업데이터가 미리 받아둔 버전이 있으면 재부팅 때 그걸로 덮어써 버리므로 지운다
+DROP_STAGED = "(sudo rm -rf /data/safe_staging/finalized /data/safe_staging/upper 2>/dev/null || rm -rf /data/safe_staging/finalized; true)"
 
 
 DIAGNOSE = rf"""
@@ -126,12 +128,12 @@ def action(name: str, body: dict):
       raise ValueError("목록에 있는 버전만 고를 수 있어요.")
     c = shlex.quote(commit)
     _run_job(f"{commit[:8]} 버전으로 되돌리기",
-             f"git reset --hard {c} && git submodule sync --recursive && git submodule update --init --recursive && rm -f prebuilt && {REBOOT}")
+             f"git reset --hard {c} && git submodule sync --recursive && git submodule update --init --recursive && rm -f prebuilt && {DROP_STAGED} && {REBOOT}")
   elif name == "update_latest":
     branch = shlex.quote(git("rev-parse", "--abbrev-ref", "HEAD") or "junpilot")
     _run_job("최신 버전 다시 받기",
              f"git fetch origin {branch} && git reset --hard origin/{branch} && "
-             f"git submodule sync --recursive && git submodule update --init --recursive && rm -f prebuilt && {REBOOT}")
+             f"git submodule sync --recursive && git submodule update --init --recursive && rm -f prebuilt && {DROP_STAGED} && {REBOOT}")
   elif name == "restore_backup":
     if not os.path.isdir(BACKUP_DIR):
       raise ValueError("업데이트 직전 버전이 남아 있지 않아요.")
