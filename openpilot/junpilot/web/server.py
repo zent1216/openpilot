@@ -9,6 +9,7 @@ import hmac
 import ipaddress
 import json
 import os
+import zipfile
 import queue
 import secrets
 import threading
@@ -27,6 +28,23 @@ LOCK_TIME = 60
 COOKIE = "junpilot_token"
 INDEX_HTML = os.path.join(os.path.dirname(__file__), "index.html")
 APP_DIR = os.path.join(os.path.dirname(__file__), "app")  # 휴대폰 앱 APK (junpilot-app 빌드 결과를 함께 배포)
+
+class _StreamWriter:
+  """zip을 다 만들지 않고 바로 보내기 위한, 위치만 세는 쓰기 전용 래퍼."""
+  def __init__(self, f):
+    self.f, self.pos = f, 0
+
+  def write(self, b):
+    self.f.write(b)
+    self.pos += len(b)
+    return len(b)
+
+  def tell(self):
+    return self.pos
+
+  def flush(self):
+    self.f.flush()
+
 ROUTE_FILES = {"qlog": ("qlog.zst", "qlog"), "rlog": ("rlog.zst", "rlog"), "qcamera": ("qcamera.ts",)}
 
 
@@ -362,6 +380,23 @@ def make_handler(app: App):
           return self._stream()
         if path == "/api/job":
           return self._send(200, {"job": app.job.status() if app.job else None})
+        if path.startswith("/api/download_all/"):
+          # 한 주행의 모든 구간을 zip 하나로 (로그는 이미 압축돼 있어 그대로 담음)
+          _, _, _, route, kind = path.split("/", 4)
+          route = unquote(route)
+          files = app.route_files(route, [kind], None)
+          self.send_response(200)
+          self.send_header("Content-Type", "application/zip")
+          self.send_header("Content-Disposition", f'attachment; filename="{route}_{kind}.zip"')
+          self.send_header("Connection", "close")
+          self.end_headers()
+          self.close_connection = True
+          with zipfile.ZipFile(_StreamWriter(self.wfile), "w", zipfile.ZIP_STORED, allowZip64=True) as zf:
+            for name, fp in files:
+              with open(fp, "rb") as src, zf.open(zipfile.ZipInfo(name), "w", force_zip64=True) as dst:
+                while chunk := src.read(1 << 20):
+                  dst.write(chunk)
+          return None
         if path.startswith("/api/download/"):
           _, _, _, route, seg, kind = path.split("/", 5)
           name, fp = app.route_files(unquote(route), [kind], [int(seg)])[0]

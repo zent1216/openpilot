@@ -234,12 +234,15 @@ async function loadRoutes() {
       <div class="grid2"><button class="b" onclick="send('${esc(r.route)}')">드라이브로 보내기</button>
       <button class="b ghost" onclick="$('#dl-${i}').hidden = !$('#dl-${i}').hidden">파일 받기</button></div>
       <div id="dl-${i}" hidden>
+        <div class="grid2"><button class="b ghost" onclick="dlAll('${esc(r.route)}', 'qlog')">요약 전체 받기</button>
+        <button class="b ghost" onclick="dlAll('${esc(r.route)}', 'rlog')">원본 전체 받기</button></div>
         ${r.segments.map(s => `<div class="row"><span class="k">${s}번 구간 (${s}~${s + 1}분)</span><span>
           <a href="#" onclick="dl('${esc(r.route)}', ${s}, 'qlog');return false">요약</a> ·
           <a href="#" onclick="dl('${esc(r.route)}', ${s}, 'rlog');return false">원본</a></span></div>`).join('')}
       </div>
     </div>`).join('');
 }
+function dlAll(route, kind) { location.href = `/api/download_all/${encodeURIComponent(route)}/${kind}`; }
 function dl(route, seg, kind) { location.href = `/api/download/${encodeURIComponent(route)}/${seg}/${kind || 'qlog'}`; }
 async function send(route) {
   const kinds = ['qlog','rlog','qcamera'].filter(k => $('#k-'+k).checked);

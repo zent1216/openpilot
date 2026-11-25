@@ -134,6 +134,13 @@ def test_routes_and_download(env):
   r = s.get(base + "/api/download/0000001c--4e7a1b2c3d/0/rlog")
   assert r.status_code == 200 and r.headers["Content-Disposition"].startswith("attachment")
   assert s.get(base + "/api/download/..%2f..%2fetc/0/qlog").status_code in (400, 404)
+  # 한 주행 전체를 zip 하나로
+  import io
+  import zipfile
+  r = s.get(base + "/api/download_all/0000001c--4e7a1b2c3d/qlog")
+  assert r.status_code == 200 and r.headers["Content-Type"] == "application/zip"
+  z = zipfile.ZipFile(io.BytesIO(r.content))
+  assert sorted(z.namelist()) == ["000_qlog.zst", "001_qlog.zst"] and len(z.read("001_qlog.zst")) == 1001
 
 
 def test_send_to_drive(env, monkeypatch):
