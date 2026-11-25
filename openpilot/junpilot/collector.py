@@ -8,6 +8,7 @@ import time
 
 from openpilot.junpilot import store
 from openpilot.junpilot.tracker import DriveTracker, Snapshot
+from openpilot.junpilot.traffic import GREEN, NONE, RED, TrafficLight
 
 log = logging.getLogger("junpilot")
 
@@ -86,7 +87,7 @@ def state_json(s: Snapshot) -> dict:
           "set": round(s.set_speed * k), "target": round(s.target * k), "driver_set": round(s.driver_set * k),
           "curve": round(s.curve_limit * k), "navi_kind": s.navi_kind, "navi_limit": round(s.navi_limit * k),
           "lead": s.lead, "lead_d": round(s.lead_d, 1), "lead_kph": round(s.lead_v * k), "gap": s.gap,
-          "bsm_l": s.bsm_l, "bsm_r": s.bsm_r, "blinker_l": s.blinker_l, "blinker_r": s.blinker_r}
+          "traffic": 0, "bsm_l": s.bsm_l, "bsm_r": s.bsm_r, "blinker_l": s.blinker_l, "blinker_r": s.blinker_r}
 
 
 class Collector:
@@ -98,6 +99,10 @@ class Collector:
     self.parked_t = 0.0
     self._last_state_t = 0.0
     self._last_ckpt_t = 0.0
+    self.traffic = TrafficLight()
+    self._red_since: float | None = None
+    self._red_said = False
+    self._traffic_said_t: dict = {}
     self.thread: threading.Thread | None = None
     self.last_error = ""  # 관리 화면 진단용
 
@@ -129,6 +134,7 @@ class Collector:
 
   def _process(self, sm):
     snap = snapshot_from(sm, read_speed_debug())
+    self._update_traffic(sm, snap)
     for ev in self.tracker.update(snap):
       self.bc.publish("event", ev)
     if self.tracker.last_saved is not None:
@@ -139,8 +145,31 @@ class Collector:
       self.tracker.checkpoint()
     if snap.t - self._last_state_t >= STATE_INTERVAL:
       self._last_state_t = snap.t
-      self.last_state = state_json(snap)
+      self.last_state = dict(state_json(snap), traffic=self.traffic.state)
       self.bc.publish("state", self.last_state)
+
+  def _update_traffic(self, sm, snap):
+    """신호 상태 추정. 바뀌면 폰에 알림(음성 안내)을 보낸다. 주행 중에만."""
+    if not snap.onroad:
+      self.traffic.state = 0
+      return
+    md, lead = sm['modelV2'], sm['radarState'].leadOne
+    st = self.traffic.update(snap.t, snap.v, list(md.velocity.x), list(md.position.x), lead.present, lead.dRel)
+    # 정지 신호는 1.5초 이어질 때 한 번만 (잠깐 깜빡이는 오인식은 말하지 않음), 같은 안내는 30초에 한 번
+    if st == RED:
+      self._red_since = self._red_since if self._red_since is not None else snap.t
+    else:
+      self._red_since = None
+    ev_type = None
+    if st == RED and snap.t - self._red_since >= 1.5 and not self._red_said:
+      ev_type, self._red_said = "traffic_red", True
+    elif st == GREEN and self._red_said:
+      ev_type, self._red_said = "traffic_green", False
+    elif st == NONE and self._red_said and self._red_since is None:
+      self._red_said = False
+    if ev_type and snap.t - self._traffic_said_t.get(ev_type, -1e9) > 30.0:
+      self._traffic_said_t[ev_type] = snap.t
+      self.bc.publish("event", {"type": ev_type, "t": round(snap.t, 2), "kph": round(snap.v * 3.6)})
 
   def is_parked(self) -> bool:
     return self.parked and time.monotonic() - self.parked_t < 2.0

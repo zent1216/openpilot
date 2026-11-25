@@ -4,6 +4,7 @@
 - 측후방 차량 접근 경고 (화면 가장자리 빨간 막대, 그쪽 깜빡이를 켜면 깜빡임)
   경고음은 공식 '차선 변경 차단(laneChangeBlocked)' 알림이 담당
 - 순정 크루즈 차간거리 단계 (왼쪽 아래 막대 4개)
+- 신호 상태 추정 (오른쪽 위, 빨강=정지 신호 / 초록=출발 신호). 모델 정지 계획으로 추정한 것 (traffic.py)
 앞차 추적 표시는 mici/onroad/model_renderer.py 의 리드 막대를 순정 크루즈 차량에서도 켜서 보여준다.
 장치 글꼴에 한글이 없을 수 있어 화면에는 숫자·도형만 그린다.
 """
@@ -13,6 +14,7 @@ import numpy as np
 import raylib_nb as rl
 
 from openpilot.system.ui.lib.polygon import draw_polygon
+from openpilot.junpilot.traffic import GREEN, NONE, RED, TrafficLight
 
 LANE_COLOR = (55, 138, 221)
 BSM_COLOR = (226, 75, 74)
@@ -60,6 +62,9 @@ class JunpilotOverlay:
   def __init__(self):
     self.lane_alpha = 0.0
     self.bsm_alpha = [0.0, 0.0]
+    self.traffic = TrafficLight()
+    self.tl_alpha = 0.0
+    self.tl_color = (0, 0, 0)
 
   @staticmethod
   def _ease(cur: float, target: float, rate: float = 0.25) -> float:
@@ -71,6 +76,22 @@ class JunpilotOverlay:
     self._draw_bsm(rect, cs)
     if cs.cruiseState.enabled and cs.junpilotCruiseGap > 0:
       self._draw_gap(rect, cs.junpilotCruiseGap)
+    self._draw_traffic(rect, sm, cs)
+
+  def _draw_traffic(self, rect, sm, cs):
+    md, lead = sm['modelV2'], sm['radarState'].leadOne
+    st = self.traffic.update(rl.get_time(), cs.vEgo, list(md.velocity.x), list(md.position.x), lead.present, lead.dRel)
+    if st == RED:
+      self.tl_color = (226, 75, 74)
+    elif st == GREEN:
+      self.tl_color = (62, 207, 142)
+    self.tl_alpha = self._ease(self.tl_alpha, 1.0 if st != NONE else 0.0, 0.3)
+    if self.tl_alpha < 0.02:
+      return
+    r = 16
+    box = rl.Rectangle(rect.x + rect.width - 2 * r - 28, rect.y + 14, 2 * r + 14, 2 * r + 14)
+    rl.draw_rectangle_rounded(box, 0.4, 8, rl.Color(0, 0, 0, int(150 * self.tl_alpha)))
+    rl.draw_circle(int(box.x + box.width / 2), int(box.y + box.height / 2), r, rl.Color(*self.tl_color, int(255 * self.tl_alpha)))
 
   def _draw_target_lane(self, rect, mr, cs):
     left = cs.leftBlinker and not cs.rightBlinker

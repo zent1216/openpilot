@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>준파일럿 주행 화면</title>
+<style>
+  html, body { margin:0; height:100%; background:#000; color:#fff; font-family:-apple-system, "Noto Sans KR", sans-serif; overflow:hidden; }
+  #wrap { position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+  canvas { display:block; max-width:100%; max-height:100%; }
+  #msg { position:absolute; left:0; right:0; bottom:16px; text-align:center; font-size:14px; color:#aab; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas><div id="msg">연결하는 중이에요…</div></div>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d'), msgEl = document.getElementById('msg');
+let ov = null, ovAt = 0, aspect = 1928 / 1208, lastFrame = null, frameAt = 0;
+let decoder = null, needKey = true, running = true, ctrl = null, es = null, gen = 0;
+
+function msg(t) { msgEl.textContent = t || ''; }
+
+function resize() {
+  const W = window.innerWidth, H = window.innerHeight, dpr = window.devicePixelRatio || 1;
+  let w = W, h = W / aspect;
+  if (h > H) { h = H; w = H * aspect; }
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- 영상 ----------
+function codecFromSps(buf) {
+  for (let i = 0; i + 7 < buf.length; i++) {
+    if (buf[i] === 0 && buf[i + 1] === 0 && buf[i + 2] === 1 && (buf[i + 3] & 0x1f) === 7) {
+      const h = x => x.toString(16).padStart(2, '0');
+      return 'avc1.' + h(buf[i + 4]) + h(buf[i + 5]) + h(buf[i + 6]);
+    }
+  }
+  return null;
+}
+
+function makeDecoder(codec) {
+  const d = new VideoDecoder({
+    output: f => { if (lastFrame) lastFrame.close(); lastFrame = f; frameAt = performance.now(); },
+    error: e => { msg('영상 오류: ' + e.message); needKey = true; decoder = null; },
+  });
+  d.configure({codec, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware'});
+  return d;
+}
+
+async function runVideo() {
+  const my = ++gen;
+  if (!('VideoDecoder' in window)) { msg('이 휴대폰의 웹뷰는 영상 재생을 지원하지 않아요. Android System WebView를 업데이트해 주세요.'); return; }
+  while (running && my === gen) {
+    try {
+      ctrl = new AbortController();
+      const r = await fetch('/api/live/video', {signal: ctrl.signal, cache: 'no-store'});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const reader = r.body.getReader();
+      let buf = new Uint8Array(0);
+      needKey = true;
+      msg('영상을 기다리는 중이에요…');
+      while (running && my === gen) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        const nb = new Uint8Array(buf.length + value.length); nb.set(buf); nb.set(value, buf.length); buf = nb;
+        while (buf.length >= 13) {
+          const dv = new DataView(buf.buffer, buf.byteOffset);
+          const len = dv.getUint32(0), key = buf[4] === 1;
+          if (buf.length < 13 + len) break;
+          const ts = Number(dv.getBigUint64(5));
+          const data = buf.slice(13, 13 + len);
+          buf = buf.slice(13 + len);
+          if (key) {
+            const codec = codecFromSps(data);
+            if (codec && (!decoder || decoder.state === 'closed')) decoder = makeDecoder(codec);
+            needKey = false;
+          }
+          if (!decoder || needKey) continue;
+          if (decoder.decodeQueueSize > 6) { needKey = true; continue; }  // 밀리면 다음 키프레임까지 건너뜀
+          decoder.decode(new EncodedVideoChunk({type: key ? 'key' : 'delta', timestamp: ts, data}));
+          msg('');
+        }
+      }
+    } catch (e) {
+      if (!running) return;
+      msg('다시 연결하는 중이에요… (' + e.message + ')');
+    }
+    if (decoder && decoder.state !== 'closed') { try { decoder.close(); } catch (e) {} }
+    decoder = null;
+    await new Promise(r => setTimeout(r, 1500));
+  }
+}
+
+// ---------- 덮어 그리기 정보 ----------
+function runOverlay() {
+  if (es) es.close();
+  es = new EventSource('/api/live/overlay');
+  es.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.error) return;
+    ov = d; ovAt = performance.now();
+    if (d.aspect && Math.abs(d.aspect - aspect) > 0.01) { aspect = d.aspect; resize(); }
+  };
+}
+
+// ---------- 그리기 ----------
+function poly(pts, fill) {
+  if (!pts || pts.length < 3) return;
+  const W = cv.width, H = cv.height;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0] * W, pts[0][1] * H);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * W, pts[i][1] * H);
+  ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+}
+
+function roundRect(x, y, w, h, r, fill) {
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fillStyle = fill; ctx.fill();
+}
+
+function draw() {
+  const W = cv.width, H = cv.height, s = W / 1000;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  if (lastFrame) ctx.drawImage(lastFrame, 0, 0, W, H);
+  const fresh = ov && performance.now() - ovAt < 1500;
+  if (fresh) {
+    const hud = ov.hud || {};
+    for (const e of ov.edges) poly(e.poly, `rgba(255,70,70,${0.6 * e.a})`);
+    for (const l of ov.lanes) poly(l.poly, `rgba(255,255,255,${Math.min(1, l.p)})`);
+    if (ov.path.length) {
+      const g = ctx.createLinearGradient(0, H, 0, H * 0.4);
+      const c = hud.active ? '13,248,122' : '255,255,255';
+      g.addColorStop(0, `rgba(${c},0.45)`); g.addColorStop(1, `rgba(${c},0)`);
+      poly(ov.path, g);
+    }
+    if (ov.lead && ov.lead.left && ov.lead.right) {
+      const [lx, ly] = ov.lead.left, [rx, ry] = ov.lead.right;
+      ctx.strokeStyle = 'rgba(62,207,142,0.95)'; ctx.lineWidth = 8 * s;
+      ctx.beginPath(); ctx.moveTo(lx * W, ly * H); ctx.lineTo(rx * W, ry * H); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = `bold ${28 * s}px sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText(`${Math.round(ov.lead.d)}m`, (lx + rx) / 2 * W, Math.min(ly, ry) * H - 14 * s);
+    }
+    // 측후방 경고
+    if (hud.bsm_l) roundRect(0, H * 0.25, 14 * s, H * 0.7, 6 * s, 'rgba(226,75,74,0.85)');
+    if (hud.bsm_r) roundRect(W - 14 * s, H * 0.25, 14 * s, H * 0.7, 6 * s, 'rgba(226,75,74,0.85)');
+    // 속도
+    ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
+    roundRect(16 * s, 16 * s, 200 * s, 120 * s, 18 * s, 'rgba(0,0,0,0.45)');
+    ctx.font = `bold ${72 * s}px sans-serif`; ctx.fillText(String(hud.kph ?? 0), 34 * s, 92 * s);
+    ctx.font = `${22 * s}px sans-serif`; ctx.fillStyle = '#ccd';
+    ctx.fillText(hud.set ? `설정 ${hud.set}` + (hud.gap ? ` · 차간 ${hud.gap}` : '') : 'km/h', 34 * s, 124 * s);
+    // 인게이지 상태
+    roundRect(232 * s, 16 * s, 26 * s, 26 * s, 13 * s, hud.active ? '#3ecf8e' : hud.engaged ? '#ffb02e' : '#555');
+    // 깜빡이
+    const t = performance.now() / 1000, on = Math.sin(t * Math.PI * 3) > 0;
+    ctx.fillStyle = 'rgba(62,207,142,0.95)'; ctx.font = `bold ${54 * s}px sans-serif`; ctx.textAlign = 'center';
+    if (hud.blinker_l && on) ctx.fillText('◀', W * 0.38, 70 * s);
+    if (hud.blinker_r && on) ctx.fillText('▶', W * 0.62, 70 * s);
+    // 신호 (오른쪽 위): 1=정지, 2=출발
+    if (hud.traffic) {
+      const r = 26 * s, cx = W - 60 * s, cy = 60 * s;
+      roundRect(cx - r - 12 * s, cy - r - 12 * s, 2 * r + 24 * s, 2 * r + 24 * s, 16 * s, 'rgba(0,0,0,0.55)');
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = hud.traffic === 1 ? '#e24b4a' : '#3ecf8e'; ctx.fill();
+    }
+    // 경고 문구
+    if (hud.alert1) {
+      const colors = {normal: 'rgba(20,20,20,0.75)', userPrompt: 'rgba(200,120,0,0.85)', critical: 'rgba(200,30,30,0.9)'};
+      roundRect(W * 0.1, H - 130 * s, W * 0.8, 110 * s, 20 * s, colors[hud.status] || colors.normal);
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+      ctx.font = `bold ${36 * s}px sans-serif`; ctx.fillText(hud.alert1, W / 2, H - (hud.alert2 ? 82 : 62) * s);
+      if (hud.alert2) { ctx.font = `${26 * s}px sans-serif`; ctx.fillText(hud.alert2, W / 2, H - 42 * s); }
+    }
+  }
+  if (lastFrame && performance.now() - frameAt > 2000) msg('영상이 멈췄어요. 다시 연결하는 중이에요…');
+  requestAnimationFrame(draw);
+}
+
+document.addEventListener('visibilitychange', () => {
+  // 화면이 꺼지거나 앱이 가려지면 영상 전송을 멈춰 데이터·배터리를 아낌
+  if (document.hidden) { running = false; if (ctrl) ctrl.abort(); if (es) es.close(); }
+  else if (!running) { running = true; runVideo(); runOverlay(); }
+});
+
+runVideo();
+runOverlay();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

@@ -65,8 +65,13 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
   return params.get_bool("IsLiveStreaming")
 
+def junpilot_live(started: bool, params: Params, CP: car.CarParams) -> bool:
+  # 준파일럿: 폰에서 주행 화면을 보는 중 (관리 서버가 2초마다 표시 파일을 갱신)
+  from openpilot.junpilot.live import flag_active
+  return flag_active()
+
 def or_(*fns):
-  return lambda *args: operator.or_(*(fn(*args) for fn in fns))
+  return lambda *args: any(fn(*args) for fn in fns)
 
 def and_(*fns):
   return lambda *args: operator.and_(*(fn(*args) for fn in fns))
@@ -76,10 +81,10 @@ procs = [
 
   NativeProcess("loggerd", "openpilot/system/loggerd", ["./loggerd"], logging),
   NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], only_onroad),
-  NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
+  NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar, junpilot_live)),
   PythonProcess("logmessaged", "openpilot.system.logmessaged", always_run),
 
-  NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream), enabled=not WEBCAM),
+  NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream, junpilot_live), enabled=not WEBCAM),
   PythonProcess("webcamerad", "openpilot.system.camerad.webcam.camerad", driverview, enabled=WEBCAM),
   PythonProcess("proclogd", "openpilot.system.proclogd", only_onroad, enabled=platform.system() != "Darwin"),
   PythonProcess("journald", "openpilot.system.journald", only_onroad, platform.system() != "Darwin"),
