@@ -187,3 +187,24 @@ def test_unexpected_error_returns_message(env, monkeypatch):
   monkeypatch.setattr(dev, "is_onroad", boom)
   r = requests.get(base + "/api/ping")
   assert r.status_code == 500 and "알림 저장 실패" in r.json()["error"]
+
+
+def test_trusted_code_works_while_onroad(tmp_path, monkeypatch):
+  monkeypatch.setenv("JUNPILOT_DIR", str(tmp_path))
+  from openpilot.junpilot.web.server import App
+
+  class Dev:
+    onroad = True
+    def is_onroad(self):
+      return self.onroad
+    def set_pairing_alert(self, *a, **k):
+      pass
+    def ip_addresses(self):
+      return []
+
+  app = App(Dev())
+  assert not app.pairing_active()  # 장치 화면 코드는 주행 중 막힘
+  code = app.new_trusted_code()
+  assert app.pairing_active()
+  assert app.pair(code, "폰")
+  assert not app.pairing_active()  # 한 번 쓰면 닫힘

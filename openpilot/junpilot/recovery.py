@@ -99,12 +99,17 @@ def _run_job(name: str, cmd: str):
 REBOOT = "sync; sleep 2; sudo reboot"
 
 
-DIAGNOSE = f"""
+DIAGNOSE = rf"""
 echo '== 관리 페이지 프로그램 =='; pgrep -af 'junpilot.web.server' || echo '실행 중 아님'
 echo; echo '== 열린 포트 =='; (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -E ':808[0-9]' || echo '8082 없음'
 echo; echo '== 불러오기 시험 =='; cd {OP_DIR} && timeout 30 python3 -c 'import openpilot.junpilot.web.server; print("불러오기 성공")' 2>&1 | tail -25
 echo; echo '== 서버 오류 기록 =='; tail -60 {DATA_DIR}/server_error.log 2>/dev/null || echo '없음'
 echo; echo '== 시스템 기록(관리 페이지 프로그램만) =='; grep -h '"daemon": "junpilotd"' $(ls -t /data/log/swaglog.* 2>/dev/null | head -5) 2>/dev/null | tail -10 | cut -c1-600 || echo '없음'
+echo; echo '== 차량 인식 =='; echo "차종 파일: $(cat /data/junpilot_car 2>/dev/null || echo '없음(기본 KIA_PV5)')"
+cd {OP_DIR} && echo "opendbc: $(git -C opendbc_repo log -1 --format='%h %s' 2>&1 | head -1)"; echo "opendbc 주소: $(git -C opendbc_repo remote get-url origin 2>&1)"
+grep -c 'KIA_PV5' opendbc_repo/opendbc/car/hyundai/values.py 2>/dev/null | sed 's/^/PV5 정의 수: /'
+grep -h '"event": "fingerprinted"' $(ls -t /data/log/swaglog.* 2>/dev/null | head -20) 2>/dev/null | tail -2 | cut -c1-700 || echo '인식 기록 없음'
+grep -h -i 'car_helpers\|interfaces\|fingerprint' $(ls -t /data/log/swaglog.* 2>/dev/null | head -10) 2>/dev/null | grep -i 'error\|exception\|traceback' | tail -5 | cut -c1-500
 """
 
 
@@ -121,12 +126,12 @@ def action(name: str, body: dict):
       raise ValueError("목록에 있는 버전만 고를 수 있어요.")
     c = shlex.quote(commit)
     _run_job(f"{commit[:8]} 버전으로 되돌리기",
-             f"git reset --hard {c} && git submodule update --init --recursive && rm -f prebuilt && {REBOOT}")
+             f"git reset --hard {c} && git submodule sync --recursive && git submodule update --init --recursive && rm -f prebuilt && {REBOOT}")
   elif name == "update_latest":
     branch = shlex.quote(git("rev-parse", "--abbrev-ref", "HEAD") or "junpilot")
     _run_job("최신 버전 다시 받기",
              f"git fetch origin {branch} && git reset --hard origin/{branch} && "
-             f"git submodule update --init --recursive && rm -f prebuilt && {REBOOT}")
+             f"git submodule sync --recursive && git submodule update --init --recursive && rm -f prebuilt && {REBOOT}")
   elif name == "restore_backup":
     if not os.path.isdir(BACKUP_DIR):
       raise ValueError("업데이트 직전 버전이 남아 있지 않아요.")
@@ -164,7 +169,7 @@ button.main{background:#ff8a3d;color:#1a1205}pre{white-space:pre-wrap;word-break
 <button class="main" onclick="act('update_latest','최신 버전을 다시 받고 재부팅할까요?')">최신 버전 다시 받기</button>
 <button id="bk" onclick="act('restore_backup','업데이트 직전 버전으로 되돌리고 재부팅할까요?')">업데이트 직전 버전 복원</button>
 <button onclick="act('reboot','재부팅할까요?')">재부팅</button>
-<button onclick="act('diagnose','관리 페이지(8082) 문제를 진단할까요?')">진단 (관리 페이지가 안 열릴 때)</button></div>
+<button onclick="act('diagnose','관리 페이지·차량 인식 문제를 진단할까요?')">진단 (관리 페이지·차량 인식)</button></div>
 <div class="card"><h2>작업 기록</h2><pre id="job">없음</pre></div>
 <div class="card"><h2>시작 기록 (launch_log)</h2><pre id="log"></pre></div>
 </main><script>

@@ -345,7 +345,8 @@ def main(demo=False):
   long_delay = CP.longitudinalActuatorDelay + LONG_SMOOTH_SECONDS
   prev_action = log.ModelDataV2.Action()
 
-  DH = DesireHelper(enable_bsm=CP.enableBsm)
+  # 준파일럿: 측후방 감지 여부 (CarParams.enableBsm은 없어졌으므로 현대·기아 HAS_BSM 플래그로 판단)
+  DH = DesireHelper(enable_bsm=CP.brand == "hyundai" and bool(CP.flags & (1 << 27)))
 
   while True:
     # Keep receiving frames until we are at least 1 frame ahead of previous extra frame

@@ -141,6 +141,12 @@
       <button class="b" onclick="saveDrive()">저장</button>
     </div>
     <div class="card">
+      <h2>새 기기 연결 코드</h2>
+      <p><small>휴대폰 앱이나 다른 기기를 연결할 때 써요. 장치 화면을 볼 필요가 없어서 주행 중에도 돼요.</small></p>
+      <div id="pc-code" style="font-size:32px;font-weight:800;letter-spacing:6px;margin:8px 0"></div>
+      <button class="b" onclick="makePairCode()">연결 코드 만들기</button>
+    </div>
+    <div class="card">
       <h2>이 기기</h2>
       <button class="b ghost" onclick="unpair()">이 기기 연결 해제</button>
     </div>
@@ -170,6 +176,7 @@ function showPair() { $('#pair').classList.remove('hidden'); $('#nav').classList
 async function pair() {
   try { await post('/api/pair', {code: $('#code').value, name: $('#devname').value}); note('연결됐어요.', 'ok'); start(); } catch {}
 }
+async function makePairCode() { try { const j = await post('/api/pair_code'); $('#pc-code').textContent = j.code; note(`${j.minutes}분 안에 새 기기에서 이 코드를 입력해 주세요.`, 'info'); } catch {} }
 async function showCode() { try { const j = await post('/api/show_code'); note(j.pairing ? '장치 화면을 확인해 주세요.' : '주행 중에는 코드를 표시할 수 없어요.', j.pairing ? 'info' : 'err'); } catch {} }
 
 function go(t) {

@@ -37,6 +37,7 @@ class App:
     self.lock = threading.Lock()
     self.code = ""
     self.code_until = 0.0
+    self.code_trusted = False  # 이미 연결된 기기가 만든 코드면 주행 중에도 연결 가능
     self.fails = 0
     self.locked_until = 0.0
     self.job: drive.UploadJob | None = None
@@ -54,10 +55,20 @@ class App:
     with self.lock:
       self.code = f"{secrets.randbelow(1_000_000):06d}"
       self.code_until = self.clock() + PAIR_WINDOW
+      self.code_trusted = False
       self.fails = 0
 
+  def new_trusted_code(self) -> str:
+    """이미 연결된 기기(휴대폰 크롬·노트북)에서 새 기기용 코드를 만든다. 장치 화면이 필요 없어 주행 중에도 된다."""
+    with self.lock:
+      self.code = f"{secrets.randbelow(1_000_000):06d}"
+      self.code_until = self.clock() + PAIR_WINDOW
+      self.code_trusted = True
+      self.fails = 0
+      return self.code
+
   def pairing_active(self) -> bool:
-    return self.clock() < self.code_until and not self.dev.is_onroad()
+    return self.clock() < self.code_until and (self.code_trusted or not self.dev.is_onroad())
 
   def pair(self, code: str, name: str) -> str:
     with self.lock:
@@ -378,6 +389,8 @@ def make_handler(app: App):
           return self._send(200, {"ok": True, "pairing": app.pairing_active()})
         if not app.authed(self._token()):
           return self._send(401, {"error": "기기 연결이 필요해요."})
+        if path == "/api/pair_code":
+          return self._send(200, {"code": app.new_trusted_code(), "minutes": PAIR_WINDOW // 60})
         if path == "/api/settings":
           app.set_settings(body)
           return self._send(200, app.get_settings())
