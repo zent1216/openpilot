@@ -88,6 +88,8 @@ class Collector:
     self.bc = broadcaster
     self.tracker = DriveTracker(save_dir=drives_dir())
     self.last_state: dict = {}
+    self.parked = False      # P/N단에 멈춰 있음 (설정 변경 허용용)
+    self.parked_t = 0.0
 
   def run(self):
     import openpilot.cereal.messaging as messaging
@@ -99,6 +101,10 @@ class Collector:
       if not sm.seen['deviceState'] or now - last_t < 0.1:  # 10Hz로 처리
         continue
       last_t = now
+      if sm.seen['carState'] and sm.updated['carState']:
+        cs = sm['carState']
+        self.parked = str(cs.gearShifter) in ("park", "neutral") and cs.standstill and cs.vEgo < 0.3
+        self.parked_t = now
       snap = snapshot_from(sm, read_speed_debug())
       for ev in self.tracker.update(snap):
         self.bc.publish("event", ev)
@@ -109,6 +115,9 @@ class Collector:
         last_state_t = snap.t
         self.last_state = state_json(snap)
         self.bc.publish("state", self.last_state)
+
+  def is_parked(self) -> bool:
+    return self.parked and time.monotonic() - self.parked_t < 2.0
 
   def start(self):
     threading.Thread(target=self.run, daemon=True, name="junpilot-collector").start()

@@ -108,12 +108,19 @@ class App:
     for k, spec in OFFICIAL_SETTINGS.items():
       official[k] = dict(spec, value=self.dev.get_param(k))
     jun = store.get_settings()
-    return {"onroad": self.dev.is_onroad(), "official": official,
+    # onroad: 예전 앱 호환을 위해 '설정 잠김' 의미로 보냄
+    return {"onroad": self.settings_locked(), "driving": self.dev.is_onroad(), "official": official,
             "junpilot": {k: dict(spec, value=jun[k]) for k, spec in store.JUNPILOT_SETTINGS.items()}}
 
+  def settings_locked(self) -> bool:
+    """설정 변경은 정차(시동 꺼짐)이거나, 켜져 있어도 P·N단에 멈춰 있을 때만 허용."""
+    if not self.dev.is_onroad():
+      return False
+    return not (self.collector is not None and self.collector.is_parked())
+
   def set_settings(self, body: dict):
-    if self.dev.is_onroad():
-      raise PermissionError("주행 중에는 설정을 바꿀 수 없어요. 시동을 끈 뒤 다시 시도해 주세요.")
+    if self.settings_locked():
+      raise PermissionError("주행 중에는 설정을 바꿀 수 없어요. P나 N단에 두고 멈춘 상태에서 바꿔 주세요.")
     for k, v in (body.get("official") or {}).items():
       spec = OFFICIAL_SETTINGS.get(k)
       if spec is None:

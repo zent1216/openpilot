@@ -111,6 +111,17 @@ def test_settings(env):
   dev.onroad = True
   assert s.post(base + "/api/settings", json={"official": {"IsLdwEnabled": False}}).status_code == 403
   assert dev.params["IsLdwEnabled"] is True
+  assert s.get(base + "/api/settings").json()["onroad"] is True
+  # 시동은 켜져 있어도 P·N단에 멈춰 있으면 변경 가능
+
+  class Parked:
+    def is_parked(self):
+      return True
+  app.collector = Parked()
+  assert s.get(base + "/api/settings").json()["onroad"] is False
+  assert s.post(base + "/api/settings", json={"official": {"IsLdwEnabled": False}}).status_code == 200
+  assert dev.params["IsLdwEnabled"] is False
+  app.collector = None
 
 
 def test_routes_and_download(env):
