@@ -49,6 +49,7 @@ class Controls:
     from openpilot.junpilot.speed import SpeedPlanner
     self.jp_speed = SpeedPlanner() if (self.CP.pcmCruise and not self.CP.openpilotLongitudinalControl) else None
     self.jp_gap = AutoGap()
+    self._jp_steer = (1.0, 0.0, 0)
 
     self.steer_limited_by_safety = False
     self.curvature = 0.0
@@ -68,6 +69,15 @@ class Controls:
       self.LaC = LatControlPID(self.CP, self.CI, DT_CTRL)
     elif self.CP.lateralTuning.which() == 'torque':
       self.LaC = LatControlTorque(self.CP, self.CI, DT_CTRL)
+
+  def jp_steer_scale(self) -> float:
+    from openpilot.junpilot.store import steer_tuning
+    scale, off, n = self._jp_steer
+    if n <= 0:  # 1초에 한 번만 파일을 읽음
+      scale, off = steer_tuning()
+      n = 100
+    self._jp_steer = (scale, off, n - 1)
+    return scale
 
   def update(self):
     self.sm.update(15)
@@ -131,6 +141,9 @@ class Controls:
       new_desired_curvature = self.sm['lateralManeuverPlan'].desiredCurvature if CC.latActive else self.curvature
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
+    # 준파일럿: 앱에서 정한 커브 조향 양 (각도 조향 차)
+    if CC.latActive and self.CP.steerControlType == car.CarParams.SteerControlType.angle:
+      new_desired_curvature *= self.jp_steer_scale()
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_smooth = LAT_SMOOTH_SECONDS_ANGLE if self.CP.steerControlType == car.CarParams.SteerControlType.angle else LAT_SMOOTH_SECONDS
     lat_delay = self.sm["lateralDelay"].lateralDelay + lat_smooth

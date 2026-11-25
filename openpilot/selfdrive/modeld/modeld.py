@@ -328,6 +328,7 @@ def main(demo=False):
   frame_id = 0
   last_vipc_frame_id = 0
   run_count = 0
+  jp_timing = 0.0
 
   model_transform_main = np.zeros((3, 3), dtype=np.float32)
   model_transform_extra = np.zeros((3, 3), dtype=np.float32)
@@ -391,7 +392,13 @@ def main(demo=False):
     is_rhd = sm["driverMonitoringState"].isRHD
     frame_id = sm["narrowRoadCameraState"].frameId
     v_ego = max(sm["carState"].vEgo, 0.)
-    lat_delay = sm["lateralDelay"].lateralDelay + lat_smooth_seconds
+    if run_count % 20 == 0:  # 준파일럿: 앱에서 정한 조향 시점 (1초에 한 번 읽음)
+      try:
+        from openpilot.junpilot.store import steer_tuning
+        jp_timing = steer_tuning()[1]
+      except Exception:
+        jp_timing = 0.0
+    lat_delay = max(sm["lateralDelay"].lateralDelay + lat_smooth_seconds + jp_timing, 0.0)
     if sm.updated["extrinsicsCalibration"] and sm.seen['narrowRoadCameraState'] and sm.seen['deviceState']:
       device_from_calib_euler = np.array(sm["extrinsicsCalibration"].rpyCalib, dtype=np.float32)
       dc = DEVICE_CAMERAS[(str(sm['deviceState'].deviceType), str(sm['narrowRoadCameraState'].sensor))]

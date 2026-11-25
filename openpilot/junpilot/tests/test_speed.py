@@ -146,3 +146,13 @@ def test_nmirror_fallback(planner, tmp_path, monkeypatch):
   for _ in range(30):
     t = step(p, clk, c, model(100 * KPH))
   assert t == pytest.approx(100 * KPH)
+
+
+def test_steer_tuning_settings(tmp_path, monkeypatch):
+  monkeypatch.setenv("JUNPILOT_DIR", str(tmp_path))
+  assert store.steer_tuning() == (1.0, 0.0)
+  store.set_settings({"curve_steer": 92, "steer_timing": 3})
+  scale, off = store.steer_tuning()
+  assert abs(scale - 0.92) < 1e-9 and off == -0.05
+  with pytest.raises(ValueError):
+    store.validate_setting("curve_steer", 70)

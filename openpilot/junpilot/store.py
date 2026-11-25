@@ -34,7 +34,25 @@ JUNPILOT_SETTINGS = {
                        "choices": ["사용 안 함", "수동 (핸들을 밀어서 변경)", "깜빡이 1초 후", "깜빡이 2초 후", "깜빡이 3초 후"],
                        "label": "차선 변경", "ready": True},
   "curve_slowdown": {"type": "int", "default": 2, "min": 0, "max": 3, "label": "커브 감속 (0=끔, 3=많이)", "ready": True},
+  # 조향 튜닝: 커브에서 안쪽으로 붙으면 조향 양을 낮추거나 시점을 늦춤
+  "curve_steer": {"type": "int", "default": 100, "min": 85, "max": 110,
+                  "label": "커브 조향 양 (%) · 안쪽으로 붙으면 낮추기", "ready": True},
+  "steer_timing": {"type": "choice", "default": 2, "choices": ["더 일찍", "조금 일찍", "기본", "조금 늦게", "더 늦게"],
+                   "label": "조향 시점 · 커브를 일찍 파고들면 늦게", "ready": True},
 }
+
+STEER_TIMING_OFFSET = [0.10, 0.05, 0.0, -0.05, -0.10]  # 초, 모델이 앞을 내다보는 시간에 더함
+
+
+def steer_tuning() -> tuple[float, float]:
+  """(커브 조향 배율, 조향 시점 보정 초). 설정을 못 읽으면 기본값."""
+  try:
+    s = get_settings()
+    scale = min(max(int(s.get("curve_steer", 100)), 85), 110) / 100.0
+    idx = int(s.get("steer_timing", 2))
+    return scale, STEER_TIMING_OFFSET[idx] if 0 <= idx < len(STEER_TIMING_OFFSET) else 0.0
+  except Exception:
+    return 1.0, 0.0
 
 _lock = threading.Lock()
 
