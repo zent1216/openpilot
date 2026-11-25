@@ -87,7 +87,7 @@ class Controls:
     self.curvature = -self.VM.calc_curvature(steer_angle_without_offset, CS.vEgo, lp.roll)
 
     # Update Torque Params
-    if self.CP.lateralTuning.which() == 'torque':
+    if self.CP.lateralTuning.which() == 'torque' and hasattr(self.LaC, 'update_torque_parameters'):  # 준파일럿: 각도 조향 차 보호
       torque_params = self.sm['lateralTorqueParameters']
       if self.sm.all_checks(['lateralTorqueParameters']) and torque_params.useParams:
         self.LaC.update_torque_parameters(torque_params.latAccelFactorFiltered, torque_params.latAccelOffsetFiltered,
