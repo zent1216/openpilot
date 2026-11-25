@@ -168,6 +168,7 @@ class Controls:
     if self.jp_speed is not None:
       jp_target = self.jp_speed.update(CS, self.sm['modelV2'])  # 운전자 설정속도 기억을 위해 항상 호출
       CC.cruiseControl.junpilotTargetSpeed = float(jp_target) if CC.enabled else 0.0
+      CC.cruiseControl.junpilotGap = int(self.jp_speed.settings.get("follow_gap", 0))  # 0이면 차간거리 건드리지 않음
 
     hudControl = CC.hudControl
     hudControl.setSpeed = float(CS.vCruiseCluster * CV.KPH_TO_MS)
