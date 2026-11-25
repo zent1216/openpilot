@@ -164,6 +164,8 @@ button.main{background:#ff8a3d;color:#1a1205}pre{white-space:pre-wrap;word-break
 .msg{padding:10px;border-radius:8px;margin-bottom:12px;background:#3d1c1c;color:#ffb3b3}.ok{background:#163a2b;color:#9ff0c9}small{color:#8b92a0}
 </style></head><body><main><h1><b>준</b>파일럿 복구</h1>
 <p><small>오픈파일럿이 켜지지 않거나 이상할 때 쓰는 페이지예요. 작업을 하면 장치가 자동으로 재부팅돼요.</small></p>
+<button onclick="location.href=`http://${location.hostname}:8082/`">관리 페이지로 돌아가기</button>
+<div style="height:12px"></div>
 <div id="msg"></div>
 <div class="card"><h2>현재 상태</h2><div id="st">불러오는 중…</div></div>
 <div class="card"><h2>정상 동작했던 버전으로 되돌리기</h2><div id="good"></div></div>
