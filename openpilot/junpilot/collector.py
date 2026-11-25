@@ -3,10 +3,13 @@ import json
 import os
 import queue
 import threading
+import logging
 import time
 
 from openpilot.junpilot import store
 from openpilot.junpilot.tracker import DriveTracker, Snapshot
+
+log = logging.getLogger("junpilot")
 
 STATE_INTERVAL = 0.5
 DEBUG_PATH = os.getenv("JUNPILOT_SPEED_DEBUG", "/dev/shm/junpilot_speed.json")
@@ -90,31 +93,44 @@ class Collector:
     self.last_state: dict = {}
     self.parked = False      # P/N단에 멈춰 있음 (설정 변경 허용용)
     self.parked_t = 0.0
+    self._last_state_t = 0.0
 
   def run(self):
     import openpilot.cereal.messaging as messaging
     sm = messaging.SubMaster(['carState', 'selfdriveState', 'radarState', 'carControl', 'modelV2', 'deviceState'])
-    last_state_t = last_t = 0.0
+    last_t = 0.0
     while True:
       sm.update(100)
       now = time.monotonic()
       if not sm.seen['deviceState'] or now - last_t < 0.1:  # 10Hz로 처리
         continue
       last_t = now
-      if sm.seen['carState'] and sm.updated['carState']:
-        cs = sm['carState']
-        self.parked = str(cs.gearShifter) in ("park", "neutral") and cs.standstill and cs.vEgo < 0.3
-        self.parked_t = now
-      snap = snapshot_from(sm, read_speed_debug())
-      for ev in self.tracker.update(snap):
-        self.bc.publish("event", ev)
-      if self.tracker.last_saved is not None:
-        self.bc.publish("drive_saved", {k: v for k, v in self.tracker.last_saved.items() if k != "events"})
-        self.tracker.last_saved = None
-      if snap.t - last_state_t >= STATE_INTERVAL:
-        last_state_t = snap.t
-        self.last_state = state_json(snap)
-        self.bc.publish("state", self.last_state)
+      # P/N 정차 판단은 다른 처리와 분리 (아래에서 오류가 나도 설정 잠금 판단은 계속 돌아야 함)
+      try:
+        if sm.seen['carState'] and sm.alive['carState']:
+          cs = sm['carState']
+          gear = str(cs.gearShifter).split('.')[-1].lower()
+          self.parked = gear in ("park", "neutral") and cs.vEgo < 0.3
+          self.parked_t = now
+      except Exception:
+        log.exception("준파일럿: 기어 상태 읽기 실패")
+      try:
+        self._process(sm)
+      except Exception:
+        log.exception("준파일럿: 수집 처리 실패")
+        time.sleep(0.5)
+
+  def _process(self, sm):
+    snap = snapshot_from(sm, read_speed_debug())
+    for ev in self.tracker.update(snap):
+      self.bc.publish("event", ev)
+    if self.tracker.last_saved is not None:
+      self.bc.publish("drive_saved", {k: v for k, v in self.tracker.last_saved.items() if k != "events"})
+      self.tracker.last_saved = None
+    if snap.t - self._last_state_t >= STATE_INTERVAL:
+      self._last_state_t = snap.t
+      self.last_state = state_json(snap)
+      self.bc.publish("state", self.last_state)
 
   def is_parked(self) -> bool:
     return self.parked and time.monotonic() - self.parked_t < 2.0
