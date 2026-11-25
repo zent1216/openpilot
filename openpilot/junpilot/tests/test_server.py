@@ -120,6 +120,8 @@ def test_routes_and_download(env):
   assert len(routes) == 1 and routes[0]["segments"] == [0, 1] and routes[0]["kinds"] == ["qlog", "rlog"]
   r = s.get(base + "/api/download/0000001c--4e7a1b2c3d/1/qlog")
   assert r.status_code == 200 and len(r.content) == 1001
+  r = s.get(base + "/api/download/0000001c--4e7a1b2c3d/0/rlog")
+  assert r.status_code == 200 and r.headers["Content-Disposition"].startswith("attachment")
   assert s.get(base + "/api/download/..%2f..%2fetc/0/qlog").status_code in (400, 404)
 
 

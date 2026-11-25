@@ -37,6 +37,7 @@
   .msg { padding:10px 12px; border-radius:8px; margin-bottom:12px; font-size:14px; }
   .msg.err { background:#3d1c1c; color:#ffb3b3; } .msg.ok { background:#163a2b; color:#9ff0c9; } .msg.info { background:#262a33; color:var(--dim); }
   .route { padding:10px 0; border-top:1px solid var(--line); }
+  .route a { color: var(--acc, #ff8a3d); text-decoration: none; font-weight: 700; }
   .route:first-of-type { border-top:0; }
   .route .top { display:flex; justify-content:space-between; gap:8px; }
   .route .name { font-family:ui-monospace, monospace; font-size:13px; }
@@ -211,15 +212,20 @@ async function loadStatus() {
 async function loadRoutes() {
   const {routes} = await api('/api/routes');
   if (!routes.length) { $('#routes').innerHTML = '<small>저장된 주행기록이 없어요.</small>'; return; }
-  $('#routes').innerHTML = routes.map(r => `
+  $('#routes').innerHTML = routes.map((r, i) => `
     <div class="route">
       <div class="top"><span class="name">${esc(r.route)}</span><span class="k">${when(r.mtime)}</span></div>
       <small>${r.segments.length}구간 · ${size(r.size)} · ${r.kinds.map(k => ({qlog:'요약',rlog:'원본',qcamera:'영상'}[k])).join(', ')}</small>
       <div class="grid2"><button class="b" onclick="send('${esc(r.route)}')">드라이브로 보내기</button>
-      <button class="b ghost" onclick="dl('${esc(r.route)}', ${r.segments[0]})">첫 구간 요약 받기</button></div>
+      <button class="b ghost" onclick="$('#dl-${i}').hidden = !$('#dl-${i}').hidden">파일 받기</button></div>
+      <div id="dl-${i}" hidden>
+        ${r.segments.map(s => `<div class="row"><span class="k">${s}번 구간 (${s}~${s + 1}분)</span><span>
+          <a href="#" onclick="dl('${esc(r.route)}', ${s}, 'qlog');return false">요약</a> ·
+          <a href="#" onclick="dl('${esc(r.route)}', ${s}, 'rlog');return false">원본</a></span></div>`).join('')}
+      </div>
     </div>`).join('');
 }
-function dl(route, seg) { location.href = `/api/download/${encodeURIComponent(route)}/${seg}/qlog`; }
+function dl(route, seg, kind) { location.href = `/api/download/${encodeURIComponent(route)}/${seg}/${kind || 'qlog'}`; }
 async function send(route) {
   const kinds = ['qlog','rlog','qcamera'].filter(k => $('#k-'+k).checked);
   if (!kinds.length) return note('보낼 항목을 하나 이상 골라 주세요.');

@@ -358,9 +358,16 @@ def make_handler(app: App):
         if path.startswith("/api/download/"):
           _, _, _, route, seg, kind = path.split("/", 5)
           name, fp = app.route_files(unquote(route), [kind], [int(seg)])[0]
-          with open(fp, "rb") as f:
-            return self._send(200, body=f.read(), ctype="application/octet-stream",
-                              headers={"Content-Disposition": f'attachment; filename="{name}"'})
+          fname = name.replace("/", "_")
+          self.send_response(200)
+          self.send_header("Content-Type", "application/octet-stream")
+          self.send_header("Content-Length", str(os.path.getsize(fp)))
+          self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+          self.end_headers()
+          with open(fp, "rb") as f:  # 원본 로그는 커서 나눠 보낸다
+            while chunk := f.read(1 << 20):
+              self.wfile.write(chunk)
+          return None
       except FileNotFoundError as e:
         return self._send(404, {"error": str(e)})
       except (KeyError, ValueError, IndexError) as e:
