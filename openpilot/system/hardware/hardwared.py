@@ -205,8 +205,11 @@ def hardware_thread(end_event, hw_queue) -> None:
 
   count = 0
 
+  from openpilot.junpilot.ready import ReadyGate
+  ready_gate = ReadyGate()
   onroad_conditions: dict[str, bool] = {
     "ignition": False,
+    "car_ready": True,  # 준파일럿: 키온(ACC)일 때는 정차로 둠
     "not_onroad_cycle": True,
     "device_temp_good": True,
   }
@@ -268,6 +271,8 @@ def hardware_thread(end_event, hw_queue) -> None:
 
       # Set ignition based on any panda connected
       onroad_conditions["ignition"] = any(ps.ignitionLine or ps.ignitionCan for ps in pandaStates if ps.pandaType != log.PandaState.PandaType.unknown)
+
+      onroad_conditions["car_ready"] = ready_gate.allow_onroad(started_ts is not None)
 
       pandaState = pandaStates[0]
 

@@ -27,6 +27,7 @@ JUNPILOT_SETTINGS = {
   "nmirror": {"type": "bool", "default": False, "label": "폰 내비 단속 정보 사용", "ready": True},
   "navi_margin": {"type": "int", "default": 0, "min": -5, "max": 10, "label": "단속 속도 여유 (km/h)", "ready": True},
   # 0=사용 안 함, 1=수동(핸들을 밀어서), 2~4=깜빡이 1~3초 후 자동
+  "ready_only": {"type": "bool", "default": True, "label": "계기판 READY일 때만 주행 모드 (키온일 땐 정차)", "ready": True},
   "lane_change_mode": {"type": "choice", "default": 1,
                        "choices": ["사용 안 함", "수동 (핸들을 밀어서 변경)", "깜빡이 1초 후", "깜빡이 2초 후", "깜빡이 3초 후"],
                        "label": "차선 변경", "ready": True},

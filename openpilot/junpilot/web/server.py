@@ -454,6 +454,11 @@ def main():
     raise
   threading.Thread(target=httpd.serve_forever, daemon=True).start()  # 웹서버를 먼저 띄운다
   try:
+    from openpilot.junpilot.ready import run_watcher
+    threading.Thread(target=run_watcher, daemon=True, name="ready").start()
+  except Exception:
+    _log_error("READY 감지")
+  try:
     from openpilot.junpilot.nmirror import NMirrorServer
     app.nmirror = NMirrorServer(ip_addresses=app.dev.ip_addresses)
     app.nmirror.start()
