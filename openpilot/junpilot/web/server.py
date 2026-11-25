@@ -20,6 +20,7 @@ from urllib.parse import urlparse, unquote
 from openpilot.junpilot import store, drive, tracker
 from openpilot.junpilot.collector import Broadcaster, drives_dir
 from openpilot.junpilot.device import OFFICIAL_SETTINGS
+from openpilot.junpilot.setting_help import help_for
 
 PORT = int(os.getenv("JUNPILOT_PORT", "8082"))
 PAIR_WINDOW = 10 * 60  # 페어링 코드 표시 시간(초)
@@ -124,11 +125,11 @@ class App:
   def get_settings(self) -> dict:
     official = {}
     for k, spec in OFFICIAL_SETTINGS.items():
-      official[k] = dict(spec, value=self.dev.get_param(k))
+      official[k] = dict(spec, value=self.dev.get_param(k), help=help_for(k))
     jun = store.get_settings()
     # onroad: 예전 앱 호환을 위해 '설정 잠김' 의미로 보냄
     return {"onroad": self.settings_locked(), "driving": self.dev.is_onroad(), "official": official,
-            "junpilot": {k: dict(spec, value=jun[k]) for k, spec in store.JUNPILOT_SETTINGS.items()}}
+            "junpilot": {k: dict(spec, value=jun[k], help=help_for(k)) for k, spec in store.JUNPILOT_SETTINGS.items()}}
 
   def settings_locked(self) -> bool:
     """설정 변경은 정차(시동 꺼짐)이거나, 켜져 있어도 P·N단에 멈춰 있을 때만 허용."""

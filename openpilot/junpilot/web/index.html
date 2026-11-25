@@ -48,6 +48,8 @@
   .hidden { display:none !important; }
   small { color:var(--dim); }
   .fw { font-family:ui-monospace, monospace; font-size:12px; color:var(--dim); white-space:pre-wrap; word-break:break-all; }
+.setting{border-bottom:1px solid var(--line,#2a2e38);padding-bottom:10px;margin-bottom:4px}
+.help{font-size:13px;line-height:1.55;color:var(--dim,#9aa3b2);margin-top:-2px}
 </style>
 </head>
 <body>
@@ -263,15 +265,17 @@ async function loadJob() {
 }
 
 function badge(spec) { return spec.ready === false ? ' <span class="pill acc">준비 중</span>' : ''; }
-function control(group, key, spec) {
+function helpText(spec) { return spec.help ? `<div class="help">${esc(spec.help)}</div>` : ''; }
+function control(group, key, spec) { return `<div class="setting">${control1(group, key, spec)}${helpText(spec)}</div>`; }
+function control1(group, key, spec) {
   const id = `${group}-${key}`;
   if (spec.type === 'bool')
-    return `<label class="row"><span>${esc(spec.label)}${badge(spec)}</span><span class="sw"><input type="checkbox" id="${id}" ${spec.value ? 'checked' : ''}><span></span></span></label>`;
+    return `<label class="row" style="border:0"><span>${esc(spec.label)}${badge(spec)}</span><span class="sw"><input type="checkbox" id="${id}" ${spec.value ? 'checked' : ''}><span></span></span></label>`;
   let opts;
   if (spec.type === 'choice_str') opts = Object.entries(spec.choices).map(([v, l]) => `<option value="${v}" ${v === spec.value ? 'selected' : ''}>${esc(l)}</option>`);
   else if (spec.type === 'choice') opts = spec.choices.map((l, i) => `<option value="${i}" ${i === spec.value ? 'selected' : ''}>${esc(l)}</option>`);
   else { opts = []; for (let i = spec.min; i <= spec.max; i++) opts.push(`<option value="${i}" ${i === spec.value ? 'selected' : ''}>${i}</option>`); }
-  return `<div class="row"><span>${esc(spec.label)}${badge(spec)}</span><select id="${id}" style="width:auto">${opts.join('')}</select></div>`;
+  return `<div class="row" style="border:0"><span>${esc(spec.label)}${badge(spec)}</span><select id="${id}" style="width:auto">${opts.join('')}</select></div>`;
 }
 async function loadSettings() {
   settings = await api('/api/settings');
