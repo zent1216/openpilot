@@ -156,6 +156,12 @@ class App:
       store.set_settings(store_changes)
 
   # ---- 주행 리포트 / 맞춤 튜닝 ----
+  def report_status(self) -> dict:
+    c = self.collector
+    alive = c is not None and c.thread is not None and c.thread.is_alive()
+    return {"running": alive, "error": c.last_error if c else "", "drives": len(tracker.list_drives(drives_dir())),
+            "recording": bool(c and c.tracker.stats is not None)}
+
   def tuning(self) -> dict:
     return {"suggestions": tracker.tuning_suggestions(tracker.list_drives(drives_dir()), store.get_settings())}
 
@@ -363,7 +369,8 @@ def make_handler(app: App):
           return self._send(200, {"device": app.dev.info(), "onroad": app.dev.is_onroad(),
                                   "drive": {"configured": bool(drive.get_config()["url"])},
                                   "nmirror": app.nmirror.status() if app.nmirror else None,
-                                  "job": app.job.status() if app.job else None})
+                                  "job": app.job.status() if app.job else None,
+                                  "report": app.report_status()})
         if path == "/api/settings":
           return self._send(200, app.get_settings())
         if path == "/api/routes":

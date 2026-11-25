@@ -137,3 +137,18 @@ def test_event_stream(srv):
 
 def test_snapshot_replace_unused():
   assert replace(base(0), v=1.0).v == 1.0
+
+
+def test_checkpoint_keeps_drive_without_ignition_off(tmp_path):
+  """시동을 끄지 않고 전원이 꺼지거나 재부팅돼도 주행 기록이 남아야 함."""
+  t_ = DriveTracker(save_dir=str(tmp_path), wall_clock=lambda: 1795634446.0)
+  t = 0.0
+  while t < 60:
+    t_.update(Snapshot(t=t, onroad=True, v=15.0, engaged=True))
+    t += 0.1
+  t_.checkpoint()
+  ds = tr.list_drives(str(tmp_path))
+  assert len(ds) == 1 and ds[0]["in_progress"] and ds[0]["distance_km"] > 0.8
+  t_.update(Snapshot(t=t, onroad=False))
+  ds = tr.list_drives(str(tmp_path))
+  assert len(ds) == 1 and "in_progress" not in ds[0]

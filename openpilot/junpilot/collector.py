@@ -15,6 +15,9 @@ STATE_INTERVAL = 0.5
 DEBUG_PATH = os.getenv("JUNPILOT_SPEED_DEBUG", "/dev/shm/junpilot_speed.json")
 
 
+CHECKPOINT_INTERVAL = 30.0  # 주행 기록 중간 저장 간격(초)
+
+
 def drives_dir() -> str:
   return os.path.join(store.data_dir(), "drives")
 
@@ -94,6 +97,9 @@ class Collector:
     self.parked = False      # P/N단에 멈춰 있음 (설정 변경 허용용)
     self.parked_t = 0.0
     self._last_state_t = 0.0
+    self._last_ckpt_t = 0.0
+    self.thread: threading.Thread | None = None
+    self.last_error = ""  # 관리 화면 진단용
 
   def run(self):
     import openpilot.cereal.messaging as messaging
@@ -116,8 +122,9 @@ class Collector:
         log.exception("준파일럿: 기어 상태 읽기 실패")
       try:
         self._process(sm)
-      except Exception:
+      except Exception as e:
         log.exception("준파일럿: 수집 처리 실패")
+        self.last_error = f"{type(e).__name__}: {e}"
         time.sleep(0.5)
 
   def _process(self, sm):
@@ -127,6 +134,9 @@ class Collector:
     if self.tracker.last_saved is not None:
       self.bc.publish("drive_saved", {k: v for k, v in self.tracker.last_saved.items() if k != "events"})
       self.tracker.last_saved = None
+    if snap.t - self._last_ckpt_t >= CHECKPOINT_INTERVAL:
+      self._last_ckpt_t = snap.t
+      self.tracker.checkpoint()
     if snap.t - self._last_state_t >= STATE_INTERVAL:
       self._last_state_t = snap.t
       self.last_state = state_json(snap)
@@ -136,4 +146,5 @@ class Collector:
     return self.parked and time.monotonic() - self.parked_t < 2.0
 
   def start(self):
-    threading.Thread(target=self.run, daemon=True, name="junpilot-collector").start()
+    self.thread = threading.Thread(target=self.run, daemon=True, name="junpilot-collector")
+    self.thread.start()

@@ -192,14 +192,12 @@ class DriveTracker:
     self.prev = s
     return out
 
-  def _finish(self):
-    st, self.stats = self.stats, None
-    self.navi_active, self.curve_active = 0, False
-    st.end = self.wall()
+  def _write(self, st: DriveStats, in_progress: bool) -> dict | None:
     if st.distance < MIN_DRIVE_DIST:
-      return
+      return None
     data = st.to_json()
-    self.last_saved = data
+    if in_progress:
+      data["in_progress"] = True
     if self.save_dir:
       os.makedirs(self.save_dir, exist_ok=True)
       name = time.strftime("%Y%m%d-%H%M%S", time.localtime(st.start)) + ".json"
@@ -211,6 +209,21 @@ class DriveTracker:
       files = sorted(x for x in os.listdir(self.save_dir) if x.endswith(".json"))
       for old in files[:-100]:
         os.remove(os.path.join(self.save_dir, old))
+    return data
+
+  def checkpoint(self):
+    """주행 중간 저장. 시동을 끄기 전에 전원이 꺼지거나 업데이트로 재부팅돼도 기록이 남게 한다."""
+    if self.stats is not None:
+      self.stats.end = self.wall()
+      self._write(self.stats, in_progress=True)
+
+  def _finish(self):
+    st, self.stats = self.stats, None
+    self.navi_active, self.curve_active = 0, False
+    st.end = self.wall()
+    data = self._write(st, in_progress=False)
+    if data is not None:
+      self.last_saved = data
 
 
 def list_drives(save_dir: str) -> list[dict]:
