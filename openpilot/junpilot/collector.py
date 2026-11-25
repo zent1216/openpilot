@@ -61,13 +61,13 @@ def read_speed_debug() -> dict:
     return {}
 
 
-def snapshot_from(sm, dbg: dict) -> Snapshot:
+def snapshot_from(sm, dbg: dict, t: float | None = None) -> Snapshot:
   cs, ss = sm['carState'], sm['selfdriveState']
   lead = sm['radarState'].leadOne
   v = cs.vEgo
   yaw = sm['modelV2'].orientationRate.z
   return Snapshot(
-    t=time.monotonic(), onroad=sm['deviceState'].started, v=v, engaged=ss.enabled,
+    t=time.monotonic() if t is None else t, onroad=sm['deviceState'].started, v=v, engaged=ss.enabled,
     cruise_on=cs.cruiseState.enabled, set_speed=cs.cruiseState.speed,
     target=sm['carControl'].cruiseControl.junpilotTargetSpeed,
     driver_set=dbg.get("driver_set", 0.0), curve_limit=dbg.get("curve", 0.0),

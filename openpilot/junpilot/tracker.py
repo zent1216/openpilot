@@ -230,7 +230,7 @@ def list_drives(save_dir: str) -> list[dict]:
   out = []
   if not os.path.isdir(save_dir):
     return out
-  for name in sorted((x for x in os.listdir(save_dir) if x.endswith(".json")), reverse=True):
+  for name in sorted((x for x in os.listdir(save_dir) if x.endswith(".json") and x[:1].isdigit()), reverse=True):
     try:
       with open(os.path.join(save_dir, name)) as f:
         d = json.load(f)

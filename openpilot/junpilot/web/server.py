@@ -523,6 +523,11 @@ def main():
     app.collector.start()
   except Exception:
     _log_error("주행 기록기")
+  try:
+    from openpilot.junpilot import backfill
+    backfill.start(app)
+  except Exception:
+    _log_error("지난 주행 리포트")
   was_onroad = False
   started = time.monotonic()
   recorded = False
