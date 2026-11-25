@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import math
+import time
 from numbers import Number
 
 from openpilot.cereal import log
@@ -19,7 +20,7 @@ from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, S
 from openpilot.selfdrive.controls.lib.latcontrol_curvature import LatControlCurvature
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl
-from openpilot.selfdrive.modeld.modeld import LAT_SMOOTH_SECONDS
+from openpilot.selfdrive.modeld.modeld import LAT_SMOOTH_SECONDS, LAT_SMOOTH_SECONDS_ANGLE
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 
 State = log.SelfdriveState.OpenpilotState
@@ -44,8 +45,10 @@ class Controls:
     self.pm = messaging.PubMaster(['carControl', 'controlsState'])
 
     # 준파일럿: 순정 크루즈(PCM) 차량에서 설정속도 자동 조절
+    from openpilot.junpilot.gap import AutoGap
     from openpilot.junpilot.speed import SpeedPlanner
     self.jp_speed = SpeedPlanner() if (self.CP.pcmCruise and not self.CP.openpilotLongitudinalControl) else None
+    self.jp_gap = AutoGap()
 
     self.steer_limited_by_safety = False
     self.curvature = 0.0
@@ -129,7 +132,8 @@ class Controls:
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
-    lat_delay = self.sm["lateralDelay"].lateralDelay + LAT_SMOOTH_SECONDS
+    lat_smooth = LAT_SMOOTH_SECONDS_ANGLE if self.CP.steerControlType == car.CarParams.SteerControlType.angle else LAT_SMOOTH_SECONDS
+    lat_delay = self.sm["lateralDelay"].lateralDelay + lat_smooth
 
     actuators.curvature = self.desired_curvature
     steer, lateral_output, lac_log = self.LaC.update(CC.latActive, CS, self.VM, lp,
@@ -168,7 +172,11 @@ class Controls:
     if self.jp_speed is not None:
       jp_target = self.jp_speed.update(CS, self.sm['modelV2'])  # 운전자 설정속도 기억을 위해 항상 호출
       CC.cruiseControl.junpilotTargetSpeed = float(jp_target) if CC.enabled else 0.0
-      CC.cruiseControl.junpilotGap = int(self.jp_speed.settings.get("follow_gap", 0))  # 0이면 차간거리 건드리지 않음
+      base_gap = int(self.jp_speed.settings.get("follow_gap", 0))  # 0이면 차간거리 건드리지 않음
+      if self.jp_speed.settings.get("auto_gap", True):
+        base_gap = self.jp_gap.update(time.monotonic(), CS.vEgo, self.sm['longitudinalPlan'].hasLead, base_gap,
+                                      CC.enabled and CS.cruiseState.enabled)
+      CC.cruiseControl.junpilotGap = base_gap
 
     hudControl = CC.hudControl
     hudControl.setSpeed = float(CS.vCruiseCluster * CV.KPH_TO_MS)

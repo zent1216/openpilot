@@ -131,7 +131,12 @@ class CarEvents:
       events.add(EventName.doorOpen)
     if CS.seatbeltUnlatched:
       events.add(EventName.seatbeltNotLatched)
-    if CS.gearShifter != GearShifter.drive and CS.gearShifter not in CI.DRIVABLE_GEARS:
+    # 준파일럿: 인게이지 중 P단에 넣으면 경고 없이 조용히 해제 (매번 '기어 D 아님' 경고가 거슬림)
+    park_off = self.lat_only_capable and CS.gearShifter == GearShifter.park and bool(getattr(CC, "enabled", False))
+    if park_off:
+      self.lat_only = False
+      events.add(EventName.buttonCancel)
+    elif CS.gearShifter != GearShifter.drive and CS.gearShifter not in CI.DRIVABLE_GEARS:
       events.add(EventName.wrongGear)
     if CS.gearShifter == GearShifter.reverse:
       events.add(EventName.reverseGear)

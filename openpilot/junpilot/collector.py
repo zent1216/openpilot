@@ -70,7 +70,7 @@ def snapshot_from(sm, dbg: dict) -> Snapshot:
     driver_set=dbg.get("driver_set", 0.0), curve_limit=dbg.get("curve", 0.0),
     navi_kind=cs.junpilotNaviKind if cs.junpilotNaviLimit > 0 else int(dbg.get("navi_kind", 0)),
     navi_limit=cs.junpilotNaviLimit if cs.junpilotNaviLimit > 0 else float(dbg.get("navi_limit", 0.0)),
-    lead=lead.status, lead_d=lead.dRel, lead_v=lead.vLead, lead_a=lead.aLeadK,
+    lead=lead.present, lead_d=lead.dRel, lead_v=lead.vLead, lead_a=lead.aLeadK,
     blinker_l=cs.leftBlinker, blinker_r=cs.rightBlinker, bsm_l=cs.leftBlindspot, bsm_r=cs.rightBlindspot,
     gas=cs.gasPressed, brake=cs.brakePressed, driver_button=len(cs.buttonEvents) > 0,
     gap=cs.junpilotCruiseGap, lat_acc=(yaw[0] * v) if len(yaw) else 0.0,

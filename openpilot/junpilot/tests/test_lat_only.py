@@ -73,3 +73,14 @@ def test_other_cars_unchanged():
   ce = CarEvents(cp)
   ev = ce.update(_cs(lkas=True), _cs(), CC(False))
   assert EventName.buttonEnable not in names(ev)
+
+
+def test_park_disengages_quietly():
+  """인게이지 중 P단: '기어 D 아님' 경고 대신 조용히 해제."""
+  ce = CarEvents(_cp())
+  cs = _cs()
+  cs.gearShifter = structs.CarState.GearShifter.park
+  ev = names(ce.update(cs, _cs(), CC(True)))
+  assert EventName.buttonCancel in ev and EventName.wrongGear not in ev
+  ev = names(ce.update(cs, cs, CC(False)))
+  assert EventName.wrongGear in ev  # 꺼진 뒤엔 켜기만 막음 (경고 소리 없음)
