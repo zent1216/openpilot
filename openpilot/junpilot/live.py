@@ -20,7 +20,7 @@ LANE_W = (0.12, 0.16, 0.16, 0.12)
 V4L2_BUF_FLAG_KEYFRAME = 0x8
 
 # 진단용 (관리 서버의 /api/live/status)
-STATS = {"video_clients": 0, "video_msgs": 0, "video_sent": 0, "video_last": 0.0, "video_error": "",
+STATS = {"video_source": "", "video_clients": 0, "video_msgs": 0, "video_sent": 0, "video_last": 0.0, "video_error": "",
          "overlay_clients": 0, "overlay_last": 0.0, "overlay_error": ""}
 
 
@@ -176,10 +176,13 @@ def video_frames(stop, params=None):
 
 
 def _video_loop(stop, params, sock):
+  """고화질(라이브 인코더)을 먼저 받고, 4초 안에 안 오면 늘 녹화되는 저화질(qcamera) 영상으로 바꿈."""
   from openpilot.cereal import messaging
   STATS["video_error"] = ""
+  STATS["video_source"] = "고화질"
   seen_key = False
-  last_touch = 0.0
+  got_any = False
+  started = last_touch = time.monotonic()
   while not stop():
     now = time.monotonic()
     if now - last_touch > 2.0:
@@ -187,9 +190,14 @@ def _video_loop(stop, params, sock):
       last_touch = now
       if not seen_key:
         params.put("LivestreamRequestKeyframe", True)
+    if not got_any and now - started > 4.0 and STATS["video_source"] == "고화질":
+      sock = messaging.sub_sock("qNarrowRoadEncodeData", conflate=False, timeout=200)
+      STATS["video_source"] = "저화질"
+      seen_key = False
     msg = messaging.recv_one(sock)
     if msg is None:
       continue
+    got_any = True
     STATS["video_msgs"] += 1
     ed = getattr(msg, msg.which())
     key = bool(ed.idx.flags & V4L2_BUF_FLAG_KEYFRAME)
