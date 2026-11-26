@@ -158,7 +158,7 @@ class CruiseLearner:
     else:
       self._gas_t, self._gap_pending = None, None
 
-    if self._dirty and now - self._saved_t > SAVE_EVERY:
+    if learned is not None or (self._dirty and now - self._saved_t > SAVE_EVERY):
       self._saved_t = now
       try:
         self.save()

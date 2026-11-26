@@ -212,12 +212,17 @@ class Controls:
       jp_target = self.jp_speed.update(CS, self.sm['modelV2'])  # 운전자 설정속도 기억을 위해 항상 호출
       CC.cruiseControl.junpilotTargetSpeed = float(jp_target) if CC.enabled else 0.0
       base_gap = int(self.jp_speed.settings.get("follow_gap", 0))  # 0이면 차간거리 건드리지 않음
-      if self.jp_speed.settings.get("auto_gap", True):
-        learn = self.jp_speed.learner
-        base_gap = self.jp_gap.update(time.monotonic(), CS.vEgo, self.sm['longitudinalPlan'].hasLead, base_gap,
-                                      CC.enabled and CS.cruiseState.enabled,
-                                      learn.gap_for(CS.vEgo, self.sm['longitudinalPlan'].hasLead) if learn is not None else None)
-      CC.cruiseControl.junpilotGap = base_gap
+      has_lead = self.sm['longitudinalPlan'].hasLead
+      learn = self.jp_speed.learner
+      learned_gap = learn.gap_for(CS.vEgo, has_lead) if learn is not None else None
+      if base_gap == 0:
+        # '그대로 두기': 자동 단계 조절은 하지 않고, 운전자가 그 상황에서 직접 골랐던 단계(학습)만 맞춤
+        CC.cruiseControl.junpilotGap = learned_gap or 0
+      elif self.jp_speed.settings.get("auto_gap", True):
+        CC.cruiseControl.junpilotGap = self.jp_gap.update(time.monotonic(), CS.vEgo, has_lead, base_gap,
+                                                          CC.enabled and CS.cruiseState.enabled, learned_gap)
+      else:
+        CC.cruiseControl.junpilotGap = base_gap
 
     hudControl = CC.hudControl
     hudControl.setSpeed = float(CS.vCruiseCluster * CV.KPH_TO_MS)

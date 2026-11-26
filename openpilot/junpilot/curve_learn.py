@@ -96,7 +96,8 @@ class CurveLearner:
         self._win_key, self._win_t0 = key, now
         self._win = [(model_curv, actual_curv)]
 
-    if now - self._saved_t > SAVE_EVERY:
+    # 배울 때는 드물어서 바로 저장 (시동을 끄면 조향 프로세스가 바로 꺼져 모아 두면 잃음)
+    if learned is not None or (self._dirty and now - self._saved_t > SAVE_EVERY):
       self._saved_t = now
       try:
         self.save()
