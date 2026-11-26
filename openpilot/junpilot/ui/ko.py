@@ -315,6 +315,12 @@ def translate(text: str, base: dict[str, str] | None = None) -> str:
         out = _words(m.expand(rep))
         break
   if out is None:
+    # 주행 경고 문구 (화면은 소문자로 바꿔 그리기도 해서 대소문자 무시)
+    from openpilot.junpilot.alerts_ko import translate as alert_ko
+    t = alert_ko(text)
+    if t != text:
+      out = t
+  if out is None:
     out = text
   if len(_cache) > 5000:
     _cache.clear()
