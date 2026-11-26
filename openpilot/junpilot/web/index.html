@@ -60,6 +60,7 @@
     <button data-tab="status" class="on">상태</button>
     <button data-tab="routes">주행기록</button>
     <button data-tab="settings">설정</button>
+    <button data-tab="ai">AI</button>
     <button data-tab="link">연결</button>
   </nav>
 </header>
@@ -134,12 +135,17 @@
       <div id="set-jun"></div>
     </div>
     <button class="b" id="save-btn" onclick="saveSettings()">저장하고 장치에 반영</button>
-    <div class="card"><h2>스마트크루즈 자가 학습</h2>
+  </section>
+
+  <!-- AI (자가 학습) -->
+  <section id="tab-ai" class="hidden">
+    <div class="card"><h2>자가 학습 현황</h2><div id="ai-summary"></div></div>
+    <div class="card"><h2>크루즈 학습</h2>
       <p><small>크루즈 중에 직접 손댄 걸 상황별로 배운 값이에요.</small></p>
       <div id="cruise-learn-list"></div>
       <button class="b ghost" onclick="resetCruiseLearn()">학습 초기화</button>
     </div>
-    <div class="card"><h2>커브 자가 학습</h2>
+    <div class="card"><h2>코너 조향 학습</h2>
       <p><small>커브에서 핸들을 직접 돌려 고쳐 준 만큼 배운 값이에요. 100%보다 작으면 그 커브에서 덜 꺾고, 크면 더 꺾어요.</small></p>
       <div id="learn-list"></div>
       <button class="b ghost" onclick="resetLearn()">학습 초기화</button>
@@ -213,6 +219,7 @@ function go(t) {
   if (t === 'status') loadStatus();
   if (t === 'routes') { loadRoutes(); loadJob(); routeTimer = setInterval(loadJob, 2000); }
   if (t === 'settings') loadSettings();
+  if (t === 'ai') loadAi();
 }
 document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { note(''); go(b.dataset.tab); });
 
@@ -302,8 +309,7 @@ async function loadSettings() {
   $('#save-btn').disabled = settings.onroad;
   $('#set-official').innerHTML = Object.entries(settings.official).map(([k, s]) => control('o', k, s)).join('');
   $('#set-jun').innerHTML = Object.entries(settings.junpilot).map(([k, s]) => control('j', k, s)).join('');
-  loadLearn().catch(() => {});
-  loadCruiseLearn().catch(() => {});
+
 }
 function read(group, key, spec) {
   const el = $(`#${group}-${key}`);
@@ -317,6 +323,20 @@ async function loadLearn() {
     ? d.bins.map(b => row(b.label, `<b>${b.percent}%</b> <small>${b.samples}번 배움</small>`)).join('')
     : '<p><small>아직 배운 커브가 없어요. 오파 조향 중 커브에서 핸들을 살짝 돌려 맞춰 주면 배워요.</small></p>';
 }
+function ago(ts) {
+  if (!ts) return '아직 없음';
+  const m = Math.round((Date.now() / 1000 - ts) / 60);
+  return m < 1 ? '방금' : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.round(m / 60)}시간 전` : `${Math.round(m / 1440)}일 전`;
+}
+async function loadAi() {
+  const d = await api('/api/ai');
+  const c = d.curve, k = d.cruise;
+  $('#ai-summary').innerHTML =
+    row('코너 조향 학습', `${c.enabled ? '' : '<span class="pill">꺼짐</span> '}<b>${c.total}건</b> <small>${c.kinds}종류 커브 · 완전 적용 ${c.full}종류 · 최근 ${ago(c.updated)}</small>`)
+    + row('크루즈 학습', `${k.enabled ? '' : '<span class="pill">꺼짐</span> '}<b>${k.total}건</b> <small>커브 감속 ${k.curve.length}종류 · 차간 ${k.gap.length}상황 · 최근 ${ago(k.updated)}</small>`);
+  loadLearn().catch(() => {});
+  loadCruiseLearn().catch(() => {});
+}
 async function loadCruiseLearn() {
   const d = await api('/api/cruise_learn');
   if (d.empty) { $('#cruise-learn-list').innerHTML = '<p><small>아직 배운 게 없어요. 크루즈 중 커브에서 +/-를 누르거나 차간 버튼으로 단계를 바꾸면 배워요.</small></p>'; return; }
@@ -328,11 +348,11 @@ async function loadCruiseLearn() {
 }
 async function resetCruiseLearn() {
   if (!confirm('스마트크루즈 학습 내용을 모두 지울까요?')) return;
-  try { await post('/api/cruise_learn/reset', {}); note('학습 내용을 지웠어요.', 'ok'); loadCruiseLearn(); } catch {}
+  try { await post('/api/cruise_learn/reset', {}); note('학습 내용을 지웠어요.', 'ok'); loadAi(); } catch {}
 }
 async function resetLearn() {
   if (!confirm('커브 학습 내용을 모두 지울까요?')) return;
-  try { await post('/api/curve_learn/reset', {}); note('학습 내용을 지웠어요.', 'ok'); loadLearn(); } catch {}
+  try { await post('/api/curve_learn/reset', {}); note('학습 내용을 지웠어요.', 'ok'); loadAi(); } catch {}
 }
 async function saveSettings() {
   const body = {official:{}, junpilot:{}};

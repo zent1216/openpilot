@@ -157,6 +157,28 @@ class App:
       store.set_settings(store_changes)
 
   # ---- 주행 리포트 / 맞춤 튜닝 ----
+  def ai_summary(self) -> dict:
+    """자가 학습 현황 (앱 AI 탭·관리 페이지)."""
+    from openpilot.junpilot import cruise_learn, curve_learn
+
+    def mtime(p):
+      try:
+        return int(os.path.getmtime(p))
+      except OSError:
+        return None
+    s = store.get_settings()
+    cl = curve_learn.CurveLearner()
+    bins = curve_learn.describe(cl.bins)
+    cr = cruise_learn.describe()
+    cr_lr = cruise_learn.CruiseLearner()
+    cr_total = sum(c["samples"] for c in cr["curve"]) + cr["margin_samples"] + sum(g["samples"] for g in cr["gap"])
+    return {
+      "curve": {"enabled": bool(s.get("curve_learn", True)), "total": sum(b["samples"] for b in bins),
+                "kinds": len(bins), "full": sum(1 for b in bins if b["samples"] >= curve_learn.FULL_COUNT),
+                "full_count": curve_learn.FULL_COUNT, "bins": bins, "updated": mtime(cl.path)},
+      "cruise": dict(cr, enabled=bool(s.get("cruise_learn", True)), total=cr_total, updated=mtime(cr_lr.path)),
+    }
+
   def report_status(self) -> dict:
     c = self.collector
     alive = c is not None and c.thread is not None and c.thread.is_alive()
@@ -372,20 +394,6 @@ def make_handler(app: App):
                                   "nmirror": app.nmirror.status() if app.nmirror else None,
                                   "job": app.job.status() if app.job else None,
                                   "report": app.report_status()})
-        if path == "/api/cruise_learn/reset":
-          from openpilot.junpilot import cruise_learn
-          learner = cruise_learn.CruiseLearner()
-          learner.reset()
-          with open(learner.path + ".reset", "w"):  # 주행 중이면 제어 프로세스가 1초 안에 지움
-            pass
-          return self._send(200, {"ok": True})
-        if path == "/api/curve_learn/reset":
-          from openpilot.junpilot import curve_learn
-          learner = curve_learn.CurveLearner()
-          learner.reset()  # 꺼져 있을 때 바로 지움
-          with open(learner.path + ".reset", "w"):  # 주행 중이면 조향 프로세스가 1초 안에 지움
-            pass
-          return self._send(200, {"ok": True})
         if path == "/api/settings":
           return self._send(200, app.get_settings())
         if path == "/api/routes":
@@ -396,6 +404,8 @@ def make_handler(app: App):
           return self._send(200, {"drives": tracker.list_drives(drives_dir())})
         if path.startswith("/api/drives/"):
           return self._send(200, tracker.load_drive(drives_dir(), path.rsplit("/", 1)[1]))
+        if path == "/api/ai":
+          return self._send(200, app.ai_summary())
         if path == "/api/cruise_learn":
           from openpilot.junpilot import cruise_learn
           return self._send(200, cruise_learn.describe())
@@ -468,6 +478,20 @@ def make_handler(app: App):
           return self._send(401, {"error": "기기 연결이 필요해요."})
         if path == "/api/pair_code":
           return self._send(200, {"code": app.new_trusted_code(), "minutes": PAIR_WINDOW // 60})
+        if path == "/api/cruise_learn/reset":
+          from openpilot.junpilot import cruise_learn
+          learner = cruise_learn.CruiseLearner()
+          learner.reset()
+          with open(learner.path + ".reset", "w"):  # 주행 중이면 제어 프로세스가 1초 안에 지움
+            pass
+          return self._send(200, {"ok": True})
+        if path == "/api/curve_learn/reset":
+          from openpilot.junpilot import curve_learn
+          learner = curve_learn.CurveLearner()
+          learner.reset()  # 꺼져 있을 때 바로 지움
+          with open(learner.path + ".reset", "w"):  # 주행 중이면 조향 프로세스가 1초 안에 지움
+            pass
+          return self._send(200, {"ok": True})
         if path == "/api/settings":
           app.set_settings(body)
           return self._send(200, app.get_settings())

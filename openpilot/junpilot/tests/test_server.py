@@ -228,3 +228,12 @@ def test_trusted_code_works_while_onroad(tmp_path, monkeypatch):
   assert app.pairing_active()
   assert app.pair(code, "폰")
   assert not app.pairing_active()  # 한 번 쓰면 닫힘
+
+
+def test_ai_summary_and_reset(env):
+  app, dev, base = env
+  s = paired(app, base)
+  d = s.get(base + "/api/ai").json()
+  assert d["curve"]["total"] == 0 and d["cruise"]["total"] == 0 and d["cruise"]["empty"]
+  assert s.post(base + "/api/curve_learn/reset", json={}).status_code == 200
+  assert s.post(base + "/api/cruise_learn/reset", json={}).status_code == 200
