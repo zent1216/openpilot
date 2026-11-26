@@ -59,9 +59,12 @@
   .hold-bg { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:60; display:flex; align-items:center; justify-content:center; padding:20px; }
   .hold-card { background:var(--card,#181b22); border-radius:14px; padding:18px; max-width:420px; width:100%; }
   .hold-card h2 { color:#ff6b5d; margin:0 0 8px; }
-  .hold-btn { position:relative; height:52px; border-radius:12px; background:#5a1e1a; overflow:hidden; display:flex; align-items:center; justify-content:center;
+  .hold-btn { position:relative; height:56px; border-radius:12px; background:#2a2e38; overflow:hidden; display:flex; align-items:center; justify-content:center;
               user-select:none; -webkit-user-select:none; touch-action:none; cursor:pointer; }
-  .hold-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:#c8392f; }
+  .hold-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:#e5483b; }
+  .hold-bar { height:8px; border-radius:4px; background:#3a3f4b; margin-top:8px; overflow:hidden; }
+  .hold-bar-fill { height:100%; width:0; background:#e5483b; }
+  .hold-ticks { display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-top:4px; }
   .hold-btn span { position:relative; color:#fff; font-weight:700; }
 </style>
 </head>
@@ -362,19 +365,22 @@ function confirmReset(what) {
     box.innerHTML = `<div class="hold-card"><h2>최종 확인</h2>
       <p>아래 빨간 버튼을 3초 동안 꾹 누르고 있으면 ${esc(what)} 초기화를 진행해요. 손을 떼면 취소돼요.</p>
       <div class="hold-btn"><div class="hold-fill"></div><span>3초 꾹 눌러 초기화</span></div>
+      <div class="hold-bar"><div class="hold-bar-fill"></div></div>
+      <div class="hold-ticks"><span>0초</span><span>1초</span><span>2초</span><span>3초</span></div>
       <button class="b ghost" style="margin-top:10px">취소</button></div>`;
     document.body.appendChild(box);
     const btn = box.querySelector('.hold-btn'), fill = box.querySelector('.hold-fill'), label = btn.querySelector('span');
+    const bar = box.querySelector('.hold-bar-fill');
     let t0 = 0, raf = 0;
     const done = ok => { cancelAnimationFrame(raf); box.remove(); resolve(ok); };
     const tick = () => {
       const p = Math.min((performance.now() - t0) / 3000, 1);
-      fill.style.width = (p * 100) + '%';
-      label.textContent = `계속 누르세요… ${((1 - p) * 3).toFixed(1)}초`;
+      fill.style.width = bar.style.width = (p * 100) + '%';
+      label.textContent = `계속 누르세요 · ${((1 - p) * 3).toFixed(1)}초 남음`;
       if (p >= 1) return done(true);
       raf = requestAnimationFrame(tick);
     };
-    const stop = () => { if (!t0) return; t0 = 0; cancelAnimationFrame(raf); fill.style.width = '0'; label.textContent = '3초 꾹 눌러 초기화'; };
+    const stop = () => { if (!t0) return; t0 = 0; cancelAnimationFrame(raf); fill.style.width = bar.style.width = '0'; label.textContent = '3초 꾹 눌러 초기화'; };
     btn.addEventListener('pointerdown', e => { e.preventDefault(); t0 = performance.now(); tick(); });
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, stop));
     btn.addEventListener('contextmenu', e => e.preventDefault());
