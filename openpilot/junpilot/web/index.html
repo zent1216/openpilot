@@ -51,6 +51,10 @@
 .setting{border-bottom:1px solid var(--line,#2a2e38);padding-bottom:10px;margin-bottom:4px}
 .help{font-size:13px;line-height:1.55;color:var(--dim,#9aa3b2);margin-top:-2px}
 .help-t{font-size:12px;color:var(--dim,#9aa3b2);cursor:pointer;text-decoration:underline}
+  #msg { position:fixed; left:12px; right:12px; bottom:12px; z-index:50; max-width:720px; margin:0 auto; }
+  #msg .msg { margin:0; box-shadow:0 6px 20px rgba(0,0,0,.45); display:flex; gap:10px; align-items:flex-start; cursor:pointer; }
+  #msg .msg-x { margin-left:auto; opacity:.6; }
+  body { padding-bottom:80px; }
 </style>
 </head>
 <body>
@@ -179,7 +183,13 @@
 const $ = s => document.querySelector(s);
 let tab = 'status', settings = null, routeTimer = null;
 
-function note(text, kind='err') { $('#msg').innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : ''; if (text) window.scrollTo(0,0); }
+// 알림 메시지: 화면 아래에 떠 있어서 스크롤해도 계속 보임. 누르면 닫히고, 완료(ok) 알림은 6초 뒤 저절로 사라짐
+let noteTimer = null;
+function note(text, kind='err') {
+  clearTimeout(noteTimer);
+  $('#msg').innerHTML = text ? `<div class="msg ${kind}" onclick="note('')">${esc(text)}<span class="msg-x">✕</span></div>` : '';
+  if (text && kind === 'ok') noteTimer = setTimeout(() => note(''), 6000);
+}
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function size(n) { return n > 1e9 ? (n/1e9).toFixed(1)+'GB' : n > 1e6 ? (n/1e6).toFixed(0)+'MB' : (n/1e3).toFixed(0)+'KB'; }
 function when(t) { const d = new Date(t*1000); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
