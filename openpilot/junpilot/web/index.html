@@ -26,6 +26,7 @@
   .pill.ok { background:#163a2b; color:var(--ok); } .pill.bad { background:#3d1c1c; color:var(--bad); } .pill.acc { background:#3d2616; color:var(--acc); }
   button.b { background:var(--acc); color:#1a1205; border:0; border-radius:10px; padding:11px 14px; font-weight:700; font-size:15px; width:100%; }
   button.b.ghost { background:#262a33; color:var(--text); font-weight:600; }
+  button.b.danger { background:#c8392f; color:#fff; font-weight:700; }
   button.b:disabled { opacity:.45; }
   input, select, textarea { width:100%; background:#0f1115; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:16px; }
   label.t { display:block; color:var(--dim); font-size:13px; margin:10px 0 4px; }
@@ -55,6 +56,13 @@
   #msg .msg { margin:0; box-shadow:0 6px 20px rgba(0,0,0,.45); display:flex; gap:10px; align-items:flex-start; cursor:pointer; }
   #msg .msg-x { margin-left:auto; opacity:.6; }
   body { padding-bottom:80px; }
+  .hold-bg { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:60; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .hold-card { background:var(--card,#181b22); border-radius:14px; padding:18px; max-width:420px; width:100%; }
+  .hold-card h2 { color:#ff6b5d; margin:0 0 8px; }
+  .hold-btn { position:relative; height:52px; border-radius:12px; background:#5a1e1a; overflow:hidden; display:flex; align-items:center; justify-content:center;
+              user-select:none; -webkit-user-select:none; touch-action:none; cursor:pointer; }
+  .hold-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:#c8392f; }
+  .hold-btn span { position:relative; color:#fff; font-weight:700; }
 </style>
 </head>
 <body>
@@ -145,12 +153,12 @@
     <div class="card"><h2>크루즈 학습</h2>
       <p><small>크루즈 중에 직접 손댄 걸 상황별로 배운 값이에요.</small></p>
       <div id="cruise-learn-list"></div>
-      <button class="b ghost" onclick="resetCruiseLearn()">학습 초기화</button>
+      <button class="b danger" onclick="resetCruiseLearn()">크루즈 학습 초기화</button>
     </div>
     <div class="card"><h2>코너 조향 학습</h2>
       <p><small>커브에서 핸들을 직접 돌려 고쳐 준 만큼 배운 값이에요. 100%보다 작으면 그 커브에서 덜 꺾고, 크면 더 꺾어요.</small></p>
       <div id="learn-list"></div>
-      <button class="b ghost" onclick="resetLearn()">학습 초기화</button>
+      <button class="b danger" onclick="resetLearn()">코너 조향 학습 초기화</button>
     </div>
   </section>
 
@@ -345,6 +353,34 @@ async function loadAi() {
   loadLearn().catch(() => {});
   loadCruiseLearn().catch(() => {});
 }
+// 초기화: 1단계 경고창 → 2단계 빨간 버튼을 3초 꾹 눌러야 진행 (손을 떼면 취소)
+function confirmReset(what) {
+  if (!confirm(`${what}을 초기화하면 되돌릴 수 없습니다. 초기화할까요?`)) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const box = document.createElement('div');
+    box.className = 'hold-bg';
+    box.innerHTML = `<div class="hold-card"><h2>최종 확인</h2>
+      <p>아래 빨간 버튼을 3초 동안 꾹 누르고 있으면 ${esc(what)} 초기화를 진행해요. 손을 떼면 취소돼요.</p>
+      <div class="hold-btn"><div class="hold-fill"></div><span>3초 꾹 눌러 초기화</span></div>
+      <button class="b ghost" style="margin-top:10px">취소</button></div>`;
+    document.body.appendChild(box);
+    const btn = box.querySelector('.hold-btn'), fill = box.querySelector('.hold-fill'), label = btn.querySelector('span');
+    let t0 = 0, raf = 0;
+    const done = ok => { cancelAnimationFrame(raf); box.remove(); resolve(ok); };
+    const tick = () => {
+      const p = Math.min((performance.now() - t0) / 3000, 1);
+      fill.style.width = (p * 100) + '%';
+      label.textContent = `계속 누르세요… ${((1 - p) * 3).toFixed(1)}초`;
+      if (p >= 1) return done(true);
+      raf = requestAnimationFrame(tick);
+    };
+    const stop = () => { if (!t0) return; t0 = 0; cancelAnimationFrame(raf); fill.style.width = '0'; label.textContent = '3초 꾹 눌러 초기화'; };
+    btn.addEventListener('pointerdown', e => { e.preventDefault(); t0 = performance.now(); tick(); });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, stop));
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+    box.querySelector('button').onclick = () => done(false);
+  });
+}
 async function loadCruiseLearn() {
   const d = await api('/api/cruise_learn');
   if (d.empty) { $('#cruise-learn-list').innerHTML = '<p><small>아직 배운 게 없어요. 크루즈 중 커브에서 +/-를 누르거나 차간 버튼으로 단계를 바꾸면 배워요.</small></p>'; return; }
@@ -355,11 +391,11 @@ async function loadCruiseLearn() {
   $('#cruise-learn-list').innerHTML = rows.join('');
 }
 async function resetCruiseLearn() {
-  if (!confirm('스마트크루즈 학습 내용을 모두 지울까요?')) return;
+  if (!await confirmReset('크루즈 학습')) return;
   try { await post('/api/cruise_learn/reset', {}); note('학습 내용을 지웠어요.', 'ok'); loadAi(); } catch {}
 }
 async function resetLearn() {
-  if (!confirm('커브 학습 내용을 모두 지울까요?')) return;
+  if (!await confirmReset('코너 조향 학습')) return;
   try { await post('/api/curve_learn/reset', {}); note('학습 내용을 지웠어요.', 'ok'); loadAi(); } catch {}
 }
 async function saveSettings() {
