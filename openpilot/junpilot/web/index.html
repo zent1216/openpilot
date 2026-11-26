@@ -109,11 +109,11 @@
       <h2>업데이트</h2>
       <div id="st-upd"></div>
       <div class="grid2">
-        <button class="b" onclick="updateAct('download')">업데이트 받기</button>
-        <button class="b ghost" onclick="updateAct('check')">새 버전 확인만</button>
+        <button class="b ghost" id="upd-dl" onclick="updateAct('download')">업데이트 받기</button>
+        <button class="b ghost" onclick="updateAct('check')">새 버전 확인</button>
       </div>
       <div style="height:8px"></div>
-      <button class="b ghost" onclick="reboot()">재부팅 (받은 업데이트 적용)</button>
+      <button class="b ghost" id="upd-reboot" onclick="reboot()">재부팅 (받은 업데이트 적용)</button>
       <div style="height:8px"></div>
       <button class="b ghost" onclick="location.href=`http://${location.hostname}:8083/`">복구 페이지 열기</button>
       <div style="height:8px"></div>
@@ -230,8 +230,17 @@ async function updateAct(kind) {
   try {
     const j = await post('/api/update/' + kind);
     if (!j.ok) { note('업데이트 프로그램이 응답하지 않아요. 잠시 뒤 다시 시도하거나 복구 페이지를 써 주세요.', 'err'); return; }
-    note(kind === 'download' ? '업데이트를 받고 있어요. 끝나면 "재부팅하면 적용돼요"가 떠요.' : '새 버전을 확인하고 있어요.', 'info');
-    for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 3000)); try { await loadStatus(); } catch {} }
+    note(kind === 'download' ? '업데이트를 받고 있어요. 다 받으면 재부팅 버튼이 주황색으로 바뀌어요.' : '새 버전을 확인하고 있어요.', 'info');
+    for (let i = 0; i < 200; i++) {  // 받기는 몇 분 걸릴 수 있음
+      await new Promise(r => setTimeout(r, 3000));
+      let d;
+      try { await loadStatus(); d = (await api('/api/status')).device; } catch { continue; }
+      if (i < 2 || /checking|downloading|finalizing/.test(d.UpdaterState || '')) continue;
+      if (d.UpdateAvailable) note('업데이트를 다 받았어요. 주황색 재부팅 버튼을 눌러 적용하세요.', 'ok');
+      else if (d.UpdaterFetchAvailable) note('새 버전이 있어요. 주황색 업데이트 받기 버튼을 눌러 주세요.', 'info');
+      else note('이미 최신 버전이에요.', 'ok');
+      break;
+    }
   } catch {}
 }
 async function showCode() { try { const j = await post('/api/show_code'); note(j.pairing ? '장치 화면을 확인해 주세요.' : '주행 중에는 코드를 표시할 수 없어요.', j.pairing ? 'info' : 'err'); } catch {} }
@@ -284,6 +293,12 @@ async function loadStatus() {
       + `<details style="margin-top:8px"><summary class="k">펌웨어 값 (${c.fw.length}개)</summary><div class="fw">${c.fw.map(f => esc(`${f.ecu} 0x${f.address.toString(16)}${f.subAddress?'/'+f.subAddress:''}  ${f.version}`)).join('\n')}</div></details>`;
   fetch('/api/app/version').then(r => r.json()).then(v => { $('#app-dl').textContent = v.versionCode ? `휴대폰 앱 내려받기 (1.0.${v.versionCode})` : '휴대폰 앱 내려받기'; }).catch(() => {});
   const st = {idle: '대기 중', 'checking...': '확인하는 중…', 'downloading...': '받는 중…', 'finalizing update...': '설치 준비 중…'}[d.UpdaterState] || d.UpdaterState || '-';
+  // 지금 할 일만 주황색: 새 버전이 있으면 '업데이트 받기', 다 받았으면 '재부팅'
+  const busy = /checking|downloading|finalizing/.test(d.UpdaterState || '');
+  const canDl = d.UpdaterFetchAvailable && !d.UpdateAvailable && !busy;
+  $('#upd-dl').classList.toggle('ghost', !canDl);
+  $('#upd-dl').textContent = /downloading|finalizing/.test(d.UpdaterState || '') ? '업데이트 받는 중…' : '업데이트 받기';
+  $('#upd-reboot').classList.toggle('ghost', !d.UpdateAvailable);
   $('#st-upd').innerHTML = row('상태', esc(st)) + row('현재', esc(d.UpdaterCurrentDescription || '-'))
     + (d.UpdaterFetchAvailable && !d.UpdateAvailable ? row('새 버전', '<span class="pill">받을 수 있어요 → 업데이트 받기</span>') : '')
     + (d.UpdateAvailable ? row('새 버전', `<span class="pill ok">받기 완료 · 재부팅하면 적용돼요</span><br><small>${esc(d.UpdaterNewDescription)}</small>`) : '')
@@ -441,11 +456,28 @@ async function saveDrive() {
 async function reboot() { if (confirm('장치를 재부팅할까요?')) { try { await post('/api/reboot'); note('재부팅하고 있어요…', 'info'); } catch {} } }
 async function unpair() { if (confirm('이 기기 연결을 해제할까요?')) { try { await post('/api/unpair'); showPair(); } catch {} } }
 
+// 관리 페이지에 들어오면 한 번 조용히 새 버전 확인 (결과는 상태 탭 업데이트 칸과 버튼 색으로 보여줌)
+async function autoCheckUpdate() {
+  try {
+    const s = await api('/api/status');
+    const d = s.device;
+    if (s.onroad || d.UpdateAvailable || /checking|downloading|finalizing/.test(d.UpdaterState || '')) return;
+    const j = await post('/api/update/check');
+    if (!j.ok) return;
+    for (let i = 0; i < 20; i++) {  // 확인은 보통 몇 초~수십 초
+      await new Promise(r => setTimeout(r, 3000));
+      if (tab === 'status') { try { await loadStatus(); } catch {} }
+      const st = (await api('/api/status')).device.UpdaterState || '';
+      if (i > 1 && !/checking/.test(st)) break;
+    }
+  } catch {}
+}
 async function start() {
   const p = await fetch('/api/ping').then(r => r.json()).catch(() => ({}));
   if (!p.paired) return showPair();
   $('#pair').classList.add('hidden'); $('#nav').classList.remove('hidden');
   go(tab);
+  autoCheckUpdate();
 }
 start();
 </script>
