@@ -66,6 +66,7 @@
   .hold-bar-fill { height:100%; width:0; background:#e5483b; }
   .hold-ticks { display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-top:4px; }
   .hold-btn span { position:relative; color:#fff; font-weight:700; }
+  body:not(.dev) .dev-only { display:none !important; }
 </style>
 </head>
 <body>
@@ -100,6 +101,8 @@
 
   <!-- 상태 -->
   <section id="tab-status" class="hidden">
+    <div id="dev-on" class="msg info hidden" style="display:flex;justify-content:space-between;align-items:center">
+      <span>개발자 모드가 켜져 있어요</span><a href="#" onclick="setDev(false);return false">끄기</a></div>
     <div class="card"><h2>장치</h2><div id="st-dev"></div></div>
     <div class="card"><h2>차량</h2><div id="st-car"></div></div>
     <div class="card">
@@ -121,12 +124,12 @@
 
   <!-- 주행기록 -->
   <section id="tab-routes" class="hidden">
-    <div class="card" id="job-card">
+    <div class="card dev-only" id="job-card">
       <h2>전송 상태</h2>
       <div id="job"><small>진행 중인 전송이 없어요</small></div>
     </div>
-    <div class="card">
-      <h2>주행기록</h2>
+    <div class="card dev-only">
+      <h2>드라이브로 보낼 것</h2>
       <label class="t">함께 보낼 것</label>
       <div class="grid2">
         <label class="row" style="border:0"><span>요약 로그 (qlog)</span><span class="sw"><input type="checkbox" id="k-qlog" checked><span></span></span></label>
@@ -135,7 +138,10 @@
       </div>
       <label class="t">메모 (증상, 상황)</label>
       <textarea id="note" rows="2" placeholder="예: 고속도로 커브에서 핸들이 흔들림"></textarea>
-      <div id="routes" style="margin-top:10px"><small>불러오는 중…</small></div>
+    </div>
+    <div class="card">
+      <h2>주행기록</h2>
+      <div id="routes"><small>불러오는 중…</small></div>
     </div>
   </section>
 
@@ -167,7 +173,7 @@
 
   <!-- 연결 -->
   <section id="tab-link" class="hidden">
-    <div class="card">
+    <div class="card dev-only">
       <h2>구글 드라이브 연결</h2>
       <p><small>Apps Script 수신기 주소와 비밀값을 입력해 주세요. 설치 방법은 저장소의 <b>openpilot/junpilot/apps_script/설치방법.md</b>를 참고해 주세요.</small></p>
       <label class="t">웹앱 주소</label>
@@ -242,12 +248,30 @@ function go(t) {
 }
 document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { note(''); go(b.dataset.tab); });
 
+// 개발자 모드: 상태 탭의 버전을 7번 누르면 켜고 끔. 켜면 드라이브 전송·원본 로그 같은 개발용 기능이 보임
+let devMode = false, devTaps = 0, devTapT = 0;
+function applyDev() {
+  document.body.classList.toggle('dev', devMode);
+  $('#dev-on').classList.toggle('hidden', !devMode);
+}
+async function devTap() {
+  const now = Date.now();
+  devTaps = now - devTapT < 1500 ? devTaps + 1 : 1;
+  devTapT = now;
+  if (devTaps < 7) { if (devTaps >= 4) note(`${7 - devTaps}번 더 누르면 개발자 모드가 ${devMode ? '꺼져요' : '켜져요'}.`, 'info'); return; }
+  devTaps = 0;
+  await setDev(!devMode);
+}
+async function setDev(on) {
+  try { await post('/api/dev_mode', {on}); devMode = on; applyDev(); note(on ? '개발자 모드를 켰어요.' : '개발자 모드를 껐어요.', 'ok'); loadStatus(); } catch {}
+}
 async function loadStatus() {
   const s = await api('/api/status');
+  devMode = !!s.dev_mode; applyDev();
   const d = s.device;
   $('#st-dev').innerHTML = row('상태', s.onroad ? '<span class="pill acc">주행 중</span>' : '<span class="pill">정차</span>')
-    + row('버전', esc(d.Version)) + row('브랜치', esc(d.GitBranch)) + row('커밋', esc((d.GitCommit||'').slice(0,8)))
-    + row('구글 드라이브', s.drive.configured ? '<span class="pill ok">연결됨</span>' : '<span class="pill bad">미설정</span>')
+    + row('버전', `<span onclick="devTap()" style="cursor:default">${esc(d.Version)}</span>`) + row('브랜치', esc(d.GitBranch)) + row('커밋', esc((d.GitCommit||'').slice(0,8)))
+    + (devMode ? row('구글 드라이브', s.drive.configured ? '<span class="pill ok">연결됨</span>' : '<span class="pill bad">미설정</span>') : '')
     + row('폰 내비', !s.nmirror ? '-' : s.nmirror.connected
         ? `<span class="pill ok">연결됨</span> <small>${esc(s.nmirror.peer)}${s.nmirror.road_limit.road_limit_speed ? ' · 제한 ' + s.nmirror.road_limit.road_limit_speed + 'km/h' : ''}</small>`
         : '<span class="pill">연결 안 됨</span>')
@@ -273,14 +297,14 @@ async function loadRoutes() {
     <div class="route">
       <div class="top"><span class="name">${esc(r.route)}</span><span class="k">${when(r.mtime)}</span></div>
       <small>${r.segments.length}구간 · ${size(r.size)} · ${r.kinds.map(k => ({qlog:'요약',rlog:'원본',qcamera:'영상'}[k])).join(', ')}</small>
-      <div class="grid2"><button class="b" onclick="send('${esc(r.route)}')">드라이브로 보내기</button>
+      <div class="grid2"><button class="b dev-only" onclick="send('${esc(r.route)}')">드라이브로 보내기</button>
       <button class="b ghost" onclick="$('#dl-${i}').hidden = !$('#dl-${i}').hidden">파일 받기</button></div>
       <div id="dl-${i}" hidden>
         <div class="grid2"><button class="b ghost" onclick="dlAll('${esc(r.route)}', 'qlog')">요약 전체 받기</button>
-        <button class="b ghost" onclick="dlAll('${esc(r.route)}', 'rlog')">원본 전체 받기</button></div>
+        <button class="b ghost dev-only" onclick="dlAll('${esc(r.route)}', 'rlog')">원본 전체 받기</button></div>
         ${r.segments.map(s => `<div class="row"><span class="k">${s}번 구간 (${s}~${s + 1}분)</span><span>
-          <a href="#" onclick="dl('${esc(r.route)}', ${s}, 'qlog');return false">요약</a> ·
-          <a href="#" onclick="dl('${esc(r.route)}', ${s}, 'rlog');return false">원본</a></span></div>`).join('')}
+          <a href="#" onclick="dl('${esc(r.route)}', ${s}, 'qlog');return false">요약</a><span class="dev-only"> ·
+          <a href="#" onclick="dl('${esc(r.route)}', ${s}, 'rlog');return false">원본</a></span></span></div>`).join('')}
       </div>
     </div>`).join('');
 }

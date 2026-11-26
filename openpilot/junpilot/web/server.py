@@ -393,7 +393,8 @@ def make_handler(app: App):
                                   "drive": {"configured": bool(drive.get_config()["url"])},
                                   "nmirror": app.nmirror.status() if app.nmirror else None,
                                   "job": app.job.status() if app.job else None,
-                                  "report": app.report_status()})
+                                  "report": app.report_status(),
+                                  "dev_mode": bool(store.load("dev.json", {}).get("on", False))})
         if path == "/api/settings":
           return self._send(200, app.get_settings())
         if path == "/api/routes":
@@ -478,6 +479,10 @@ def make_handler(app: App):
           return self._send(401, {"error": "기기 연결이 필요해요."})
         if path == "/api/pair_code":
           return self._send(200, {"code": app.new_trusted_code(), "minutes": PAIR_WINDOW // 60})
+        if path == "/api/dev_mode":
+          # 개발자 모드: 구글 드라이브 전송·원본 로그 등 개발용 기능 보이기
+          store.save("dev.json", {"on": bool(body.get("on"))})
+          return self._send(200, {"ok": True, "dev_mode": bool(body.get("on"))})
         if path == "/api/cruise_learn/reset":
           from openpilot.junpilot import cruise_learn
           learner = cruise_learn.CruiseLearner()

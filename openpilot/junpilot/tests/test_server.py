@@ -237,3 +237,13 @@ def test_ai_summary_and_reset(env):
   assert d["curve"]["total"] == 0 and d["cruise"]["total"] == 0 and d["cruise"]["empty"]
   assert s.post(base + "/api/curve_learn/reset", json={}).status_code == 200
   assert s.post(base + "/api/cruise_learn/reset", json={}).status_code == 200
+
+
+def test_dev_mode_toggle(env):
+  app, dev, base = env
+  s = paired(app, base)
+  assert s.get(base + "/api/status").json()["dev_mode"] is False
+  assert s.post(base + "/api/dev_mode", json={"on": True}).json()["dev_mode"] is True
+  assert s.get(base + "/api/status").json()["dev_mode"] is True
+  s.post(base + "/api/dev_mode", json={"on": False})
+  assert s.get(base + "/api/status").json()["dev_mode"] is False
