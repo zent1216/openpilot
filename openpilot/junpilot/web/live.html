@@ -8,7 +8,7 @@
   html, body { margin:0; height:100%; background:#000; color:#fff; font-family:-apple-system, "Noto Sans KR", sans-serif; overflow:hidden; }
   #wrap { position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
   canvas { display:block; max-width:100%; max-height:100%; }
-  #msg { position:absolute; left:0; right:0; bottom:16px; text-align:center; font-size:14px; color:#aab; }
+  #msg { position:absolute; left:8px; right:8px; bottom:10px; text-align:center; font-size:13px; color:#dde; text-shadow:0 0 4px #000; }
 </style>
 </head>
 <body>
@@ -16,6 +16,7 @@
 <script>
 const cv = document.getElementById('c'), ctx = cv.getContext('2d'), msgEl = document.getElementById('msg');
 let ov = null, ovAt = 0, aspect = 1928 / 1208, lastFrame = null, frameAt = 0;
+let overlayIdle = false, bytesIn = 0, framesIn = 0, framesOut = 0, decErr = '';
 let decoder = null, needKey = true, running = true, ctrl = null, es = null, gen = 0;
 
 function msg(t) { msgEl.textContent = t || ''; }
@@ -43,8 +44,8 @@ function codecFromSps(buf) {
 
 function makeDecoder(codec) {
   const d = new VideoDecoder({
-    output: f => { if (lastFrame) lastFrame.close(); lastFrame = f; frameAt = performance.now(); },
-    error: e => { msg('영상 오류: ' + e.message); needKey = true; decoder = null; },
+    output: f => { if (lastFrame) lastFrame.close(); lastFrame = f; frameAt = performance.now(); framesOut++; },
+    error: e => { decErr = e.message; needKey = true; decoder = null; },
   });
   d.configure({codec, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware'});
   return d;
@@ -65,6 +66,7 @@ async function runVideo() {
       while (running && my === gen) {
         const {value, done} = await reader.read();
         if (done) break;
+        bytesIn += value.length;
         const nb = new Uint8Array(buf.length + value.length); nb.set(buf); nb.set(value, buf.length); buf = nb;
         while (buf.length >= 13) {
           const dv = new DataView(buf.buffer, buf.byteOffset);
@@ -72,6 +74,7 @@ async function runVideo() {
           if (buf.length < 13 + len) break;
           const ts = Number(dv.getBigUint64(5));
           const data = buf.slice(13, 13 + len);
+          framesIn++;
           buf = buf.slice(13 + len);
           if (key) {
             const codec = codecFromSps(data);
@@ -81,7 +84,6 @@ async function runVideo() {
           if (!decoder || needKey) continue;
           if (decoder.decodeQueueSize > 6) { needKey = true; continue; }  // 밀리면 다음 키프레임까지 건너뜀
           decoder.decode(new EncodedVideoChunk({type: key ? 'key' : 'delta', timestamp: ts, data}));
-          msg('');
         }
       }
     } catch (e) {
@@ -100,7 +102,8 @@ function runOverlay() {
   es = new EventSource('/api/live/overlay');
   es.onmessage = e => {
     const d = JSON.parse(e.data);
-    if (d.error) return;
+    overlayIdle = !!d.idle;
+    if (d.error || d.idle) return;
     ov = d; ovAt = performance.now();
     if (d.aspect && Math.abs(d.aspect - aspect) > 0.01) { aspect = d.aspect; resize(); }
   };
@@ -117,10 +120,17 @@ function poly(pts, fill) {
 }
 
 function roundRect(x, y, w, h, r, fill) {
-  ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fillStyle = fill; ctx.fill();
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);  // 오래된 웹뷰
+  ctx.fillStyle = fill; ctx.fill();
 }
 
+let drawErr = '';
 function draw() {
+  try { draw1(); drawErr = ''; } catch (e) { drawErr = '그리기 오류: ' + e.message; }
+  requestAnimationFrame(draw);
+}
+function draw1() {
   const W = cv.width, H = cv.height, s = W / 1000;
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
   if (lastFrame) ctx.drawImage(lastFrame, 0, 0, W, H);
@@ -173,8 +183,6 @@ function draw() {
       if (hud.alert2) { ctx.font = `${26 * s}px sans-serif`; ctx.fillText(hud.alert2, W / 2, H - 42 * s); }
     }
   }
-  if (lastFrame && performance.now() - frameAt > 2000) msg('영상이 멈췄어요. 다시 연결하는 중이에요…');
-  requestAnimationFrame(draw);
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -182,6 +190,29 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { running = false; if (ctrl) ctrl.abort(); if (es) es.close(); }
   else if (!running) { running = true; runVideo(); runOverlay(); }
 });
+
+// 영상이 안 나오면 이유를 화면에 보여줌
+async function diagnose() {
+  const videoOk = lastFrame && performance.now() - frameAt < 2000;
+  if (videoOk && !overlayIdle && !drawErr) { msg(''); return; }
+  let s = null;
+  try { s = await (await fetch('/api/live/status', {cache: 'no-store'})).json(); } catch (e) {}
+  const parts = [];
+  if (!('VideoDecoder' in window)) parts.push('이 웹뷰는 영상 재생을 지원하지 않아요 (Android System WebView 업데이트 필요)');
+  else if (!videoOk) {
+    if (s && s.error) parts.push('기기 연결이 필요해요');
+    else if (s && !s.encoder_on) parts.push('콤마 영상 인코더를 켜는 중이에요');
+    else if (s && s.video_msgs === 0) parts.push('콤마 카메라 영상이 아직 안 나와요' + (s.onroad ? '' : ' (READY 상태에서 다시 해 보세요)'));
+    else if (framesIn === 0) parts.push('영상 데이터가 폰에 안 와요' + (bytesIn ? ` (${bytesIn}바이트)` : ''));
+    else if (framesOut === 0) parts.push(`영상은 받는데 재생이 안 돼요 (받음 ${framesIn}${decErr ? ', ' + decErr : ''})`);
+    else parts.push('영상이 멈췄어요. 다시 연결하는 중이에요');
+    if (s && s.video_error) parts.push(s.video_error);
+  }
+  if (overlayIdle) parts.push('주행 중(READY)일 때 차선·경로가 나와요');
+  if (drawErr) parts.push(drawErr);
+  msg(parts.join(' · '));
+}
+setInterval(diagnose, 1500);
 
 runVideo();
 runOverlay();

@@ -1,4 +1,5 @@
 import os
+import time
 import operator
 import platform
 
@@ -67,8 +68,10 @@ def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
 
 def junpilot_live(started: bool, params: Params, CP: car.CarParams) -> bool:
   # 준파일럿: 폰에서 주행 화면을 보는 중 (관리 서버가 2초마다 표시 파일을 갱신)
-  from openpilot.junpilot.live import flag_active
-  return flag_active()
+  try:
+    return time.time() - os.path.getmtime("/dev/shm/junpilot_live") < 10.0  # noqa: TID251  파일 시각과 비교
+  except OSError:
+    return False
 
 def or_(*fns):
   return lambda *args: any(fn(*args) for fn in fns)

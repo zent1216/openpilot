@@ -426,6 +426,9 @@ def make_handler(app: App):
           return self._send(200, app.tuning())
         if path == "/api/events":
           return self._stream()
+        if path == "/api/live/status":
+          from openpilot.junpilot import live
+          return self._send(200, dict(live.status(), onroad=app.dev.is_onroad()))
         if path == "/api/live/video":
           return self._live_video()
         if path == "/api/live/overlay":

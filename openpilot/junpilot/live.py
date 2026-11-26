@@ -19,6 +19,19 @@ RADAR_TO_CAMERA = 1.52
 LANE_W = (0.12, 0.16, 0.16, 0.12)
 V4L2_BUF_FLAG_KEYFRAME = 0x8
 
+# 진단용 (관리 서버의 /api/live/status)
+STATS = {"video_clients": 0, "video_msgs": 0, "video_sent": 0, "video_last": 0.0, "video_error": "",
+         "overlay_clients": 0, "overlay_last": 0.0, "overlay_error": ""}
+
+
+def status() -> dict:
+  now = time.monotonic()
+  s = dict(STATS)
+  s["video_age"] = round(now - s.pop("video_last"), 1) if STATS["video_last"] else None
+  s["overlay_age"] = round(now - s.pop("overlay_last"), 1) if STATS["overlay_last"] else None
+  s["encoder_on"] = flag_active()
+  return s
+
 
 def flag_active(path: str = FLAG_FILE, now: float | None = None) -> bool:
   try:
@@ -149,9 +162,22 @@ def video_frames(stop, params=None):
   from openpilot.cereal import messaging
   from openpilot.common.params import Params
   params = params or Params()
-  params.put("LivestreamEncoderBitrate", BITRATE)
-  params.put("LivestreamRequestKeyframe", True)
+  STATS["video_clients"] += 1
+  try:
+    params.put("LivestreamEncoderBitrate", BITRATE)
+    params.put("LivestreamRequestKeyframe", True)
+  except Exception as e:
+    STATS["video_error"] = f"설정 실패: {e}"
   sock = messaging.sub_sock("livestreamNarrowRoadEncodeData", conflate=False, timeout=200)
+  try:
+    yield from _video_loop(stop, params, sock)
+  finally:
+    STATS["video_clients"] -= 1
+
+
+def _video_loop(stop, params, sock):
+  from openpilot.cereal import messaging
+  STATS["video_error"] = ""
   seen_key = False
   last_touch = 0.0
   while not stop():
@@ -164,6 +190,7 @@ def video_frames(stop, params=None):
     msg = messaging.recv_one(sock)
     if msg is None:
       continue
+    STATS["video_msgs"] += 1
     ed = getattr(msg, msg.which())
     key = bool(ed.idx.flags & V4L2_BUF_FLAG_KEYFRAME)
     if not seen_key:
@@ -171,6 +198,8 @@ def video_frames(stop, params=None):
         continue
       seen_key = True
       params.put("LivestreamRequestKeyframe", False)
+    STATS["video_sent"] += 1
+    STATS["video_last"] = time.monotonic()
     yield pack_frame(bytes(ed.header) + bytes(ed.data), key, int(msg.logMonoTime // 1000))
 
 
@@ -182,12 +211,22 @@ def overlay_frames(stop, hz: float = 15.0):
                             'deviceState', 'narrowRoadCameraState'])
   ob = OverlayBuilder()
   period = 1.0 / hz
-  while not stop():
-    t0 = time.monotonic()
-    sm.update(0)
-    if sm.seen['modelV2'] and sm.seen['carState'] and sm.seen['deviceState']:
-      try:
-        yield json.dumps(ob.build(sm), separators=(",", ":"))
-      except Exception as e:  # 한 번 실패해도 계속
-        yield json.dumps({"error": f"{type(e).__name__}: {e}"})
-    time.sleep(max(0.0, period - (time.monotonic() - t0)))
+  STATS["overlay_clients"] += 1
+  try:
+    while not stop():
+      t0 = time.monotonic()
+      sm.update(0)
+      if sm.seen['modelV2'] and sm.seen['carState'] and sm.seen['deviceState']:
+        try:
+          data = json.dumps(ob.build(sm), separators=(",", ":"))
+          STATS["overlay_last"] = time.monotonic()
+          STATS["overlay_error"] = ""
+          yield data
+        except Exception as e:  # 한 번 실패해도 계속
+          STATS["overlay_error"] = f"{type(e).__name__}: {e}"
+          yield json.dumps({"error": STATS["overlay_error"]})
+      else:
+        yield json.dumps({"idle": True})  # 주행 중이 아니라 그릴 정보가 없음
+      time.sleep(max(0.0, period - (time.monotonic() - t0)))
+  finally:
+    STATS["overlay_clients"] -= 1
