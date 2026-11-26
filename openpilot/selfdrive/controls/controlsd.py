@@ -208,12 +208,15 @@ class Controls:
     CC.cruiseControl.cancel = CS.cruiseState.enabled and (not CC.enabled or not self.CP.pcmCruise)
     CC.cruiseControl.resume = CC.enabled and CS.cruiseState.standstill and not self.sm['longitudinalPlan'].shouldStop
     if self.jp_speed is not None:
+      self.jp_speed.has_lead = bool(self.sm['longitudinalPlan'].hasLead)
       jp_target = self.jp_speed.update(CS, self.sm['modelV2'])  # 운전자 설정속도 기억을 위해 항상 호출
       CC.cruiseControl.junpilotTargetSpeed = float(jp_target) if CC.enabled else 0.0
       base_gap = int(self.jp_speed.settings.get("follow_gap", 0))  # 0이면 차간거리 건드리지 않음
       if self.jp_speed.settings.get("auto_gap", True):
+        learn = self.jp_speed.learner
         base_gap = self.jp_gap.update(time.monotonic(), CS.vEgo, self.sm['longitudinalPlan'].hasLead, base_gap,
-                                      CC.enabled and CS.cruiseState.enabled)
+                                      CC.enabled and CS.cruiseState.enabled,
+                                      learn.gap_for(CS.vEgo, self.sm['longitudinalPlan'].hasLead) if learn is not None else None)
       CC.cruiseControl.junpilotGap = base_gap
 
     hudControl = CC.hudControl

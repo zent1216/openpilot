@@ -372,6 +372,13 @@ def make_handler(app: App):
                                   "nmirror": app.nmirror.status() if app.nmirror else None,
                                   "job": app.job.status() if app.job else None,
                                   "report": app.report_status()})
+        if path == "/api/cruise_learn/reset":
+          from openpilot.junpilot import cruise_learn
+          learner = cruise_learn.CruiseLearner()
+          learner.reset()
+          with open(learner.path + ".reset", "w"):  # 주행 중이면 제어 프로세스가 1초 안에 지움
+            pass
+          return self._send(200, {"ok": True})
         if path == "/api/curve_learn/reset":
           from openpilot.junpilot import curve_learn
           learner = curve_learn.CurveLearner()
@@ -389,6 +396,9 @@ def make_handler(app: App):
           return self._send(200, {"drives": tracker.list_drives(drives_dir())})
         if path.startswith("/api/drives/"):
           return self._send(200, tracker.load_drive(drives_dir(), path.rsplit("/", 1)[1]))
+        if path == "/api/cruise_learn":
+          from openpilot.junpilot import cruise_learn
+          return self._send(200, cruise_learn.describe())
         if path == "/api/curve_learn":
           from openpilot.junpilot import curve_learn
           return self._send(200, {"bins": curve_learn.describe(curve_learn.CurveLearner().bins)})

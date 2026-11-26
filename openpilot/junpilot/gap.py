@@ -31,13 +31,13 @@ class AutoGap:
       return max(1, base - 1)
     return base
 
-  def update(self, now: float, v_ego: float, has_lead: bool, base_gap: int, enabled: bool) -> int:
-    """원하는 차간거리 단계(1~4)를 돌려준다."""
+  def update(self, now: float, v_ego: float, has_lead: bool, base_gap: int, enabled: bool, learned: int | None = None) -> int:
+    """원하는 차간거리 단계(1~4)를 돌려준다. learned: 이 상황에서 운전자가 골랐던 단계(자가 학습)."""
     base = base_gap if 1 <= base_gap <= 4 else DEFAULT_GAP
     if not enabled:
       self.gap, self.pending = base, 0
       return base
-    want = self._want(v_ego, has_lead, base)
+    want = learned if learned is not None and 1 <= learned <= 4 else self._want(v_ego, has_lead, base)
     if self.gap == 0:
       self.gap = want
     if want == self.gap:

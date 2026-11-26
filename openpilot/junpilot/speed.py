@@ -12,6 +12,7 @@ import time
 import numpy as np
 
 from openpilot.junpilot import store
+from openpilot.junpilot.cruise_learn import CruiseLearner, max_curvature
 from openpilot.junpilot.nmirror import limit_from, read_road_limit
 
 KPH = 1 / 3.6
@@ -62,12 +63,24 @@ class SpeedPlanner:
     self.camera_limit = math.inf
     self.debug: dict = {}
     self.debug_t = 0.0
+    self.has_lead = False  # controlsd가 넣어 줌 (차간거리 학습용)
+    self.learner: CruiseLearner | None = None
+    self.learned = ""
 
   def _refresh_settings(self):
     now = self.clock()
     if now - self.settings_t > 1.0:
       self.settings = store.get_settings()
       self.settings_t = now
+      # 스마트크루즈 자가 학습 (설정에서 끄면 쉼)
+      if self.settings.get("cruise_learn", True):
+        if self.learner is None:
+          self.learner = CruiseLearner()
+        if os.path.exists(self.learner.path + ".reset"):  # 관리 화면에서 초기화 요청
+          os.remove(self.learner.path + ".reset")
+          self.learner.reset()
+      else:
+        self.learner = None
 
   def update(self, CS, model) -> float:
     """목표 설정속도(m/s)를 돌려준다. 0이면 자동 조절 안 함."""
@@ -82,12 +95,27 @@ class SpeedPlanner:
       self.driver_set = set_speed
     if not cruise:
       self.driver_set = 0.0
+    pressed = {str(be.type).split(".")[-1] for be in CS.buttonEvents if getattr(be, "pressed", True)}
     if any(be.type in ("accelCruise", "decelCruise", "setCruise", "resumeCruise") for be in CS.buttonEvents):
       self.driver_pending_t = now
     if self.driver_pending_t is not None and now - self.driver_pending_t > 0.6:
       self.driver_set = set_speed  # 운전자가 바꾼 값이 반영된 뒤 기억
       self.driver_pending_t = None
     self.cruise_prev = cruise
+
+    k_max = max_curvature(list(model.velocity.x), list(model.orientationRate.z)) if model is not None else 0.0
+    if self.learner is not None:
+      lim_prev = self.debug.get("curve", 0.0) or math.inf
+      cam_prev = self.debug.get("camera", 0.0) or math.inf
+      got = self.learner.update(now, cruise=cruise, v_ego=CS.vEgo, k_max=k_max,
+                                curve_limited=bool(self.target > 0 and lim_prev < self.driver_set - 1 * KPH),
+                                camera_active=bool(self.target > 0 and cam_prev < self.driver_set - 1 * KPH),
+                                accel_pressed="accelCruise" in pressed or "resumeCruise" in pressed,
+                                decel_pressed="decelCruise" in pressed or "setCruise" in pressed,
+                                gas_pressed=bool(getattr(CS, "gasPressed", False)), gap_pressed="gapAdjustCruise" in pressed,
+                                cur_gap=int(getattr(CS, "junpilotCruiseGap", 0) or 0), has_lead=self.has_lead)
+      if got:
+        self.learned = got
 
     if not s["cruise_auto"] or not cruise or self.driver_set <= 0 or self.driver_pending_t is not None:
       self.target = 0.0
@@ -99,8 +127,9 @@ class SpeedPlanner:
     lim_curve = math.inf
     max_lat = CURVE_LAT.get(s["curve_slowdown"])
     if max_lat is not None and model is not None:
+      adj = self.learner.curve_lat_adj(k_max) if self.learner is not None else 0.0
       lim_curve = curve_limit(CS.vEgo, list(model.velocity.x), list(model.orientationRate.z), list(model.position.x),
-                              max_lat + style["lat_bias"], style["decel"])
+                              max(max_lat + style["lat_bias"] + adj, 1.0), style["decel"])
 
     # 단속카메라·구간단속: 차량 순정 내비가 알려준 제한속도 (+여유)
     # 차량 순정 내비가 없으면 엔미러(휴대폰 TMAP)가 보낸 정보를 쓴다
@@ -110,7 +139,8 @@ class SpeedPlanner:
     if navi <= 0 and s.get("nmirror", True):
       navi, navi_kind = limit_from(read_road_limit(), CS.vEgo, style["decel"])
     if s.get("navi_slowdown", True) and navi > 0:
-      self.camera_limit = navi + s.get("navi_margin", 0) * KPH
+      learned_margin = self.learner.margin_adj() if self.learner is not None else 0.0
+      self.camera_limit = navi + (s.get("navi_margin", 0) + learned_margin) * KPH
 
     want = max(min(self.driver_set, lim_curve, self.camera_limit), MIN_TARGET)
 

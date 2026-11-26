@@ -20,7 +20,7 @@ def data_dir() -> str:
 
 # 준파일럿 자체 설정. ready=False 항목은 아직 저장만 되고 동작에는 반영되지 않음
 JUNPILOT_SETTINGS = {
-  "cruise_auto": {"type": "bool", "default": False, "label": "크루즈 속도 자동 조절", "ready": True},
+  "cruise_auto": {"type": "bool", "default": True, "label": "크루즈 속도 자동 조절", "ready": True},
   "cruise_style": {"type": "choice", "default": 1, "choices": ["부드럽게", "보통", "빠르게"], "label": "주행 모드", "ready": True},
   "follow_gap": {"type": "choice", "default": 0, "choices": ["그대로 두기", "1단 (가깝게)", "2단", "3단", "4단 (멀게)"],
                  "label": "크루즈 켤 때 차간거리 단계", "ready": True},
@@ -37,6 +37,7 @@ JUNPILOT_SETTINGS = {
   # 조향 튜닝: 커브에서 안쪽으로 붙으면 조향 양을 낮추거나 시점을 늦춤
   "curve_steer": {"type": "int", "default": 100, "min": 85, "max": 110,
                   "label": "커브 조향 양 (%) · 안쪽으로 붙으면 낮추기", "ready": True},
+  "cruise_learn": {"type": "bool", "default": True, "label": "스마트크루즈 자가 학습", "ready": True},
   "curve_learn": {"type": "bool", "default": True, "label": "커브 자가 학습", "ready": True},
   "steer_timing": {"type": "choice", "default": 2, "choices": ["더 일찍", "조금 일찍", "기본", "조금 늦게", "더 늦게"],
                    "label": "조향 시점 · 커브를 일찍 파고들면 늦게", "ready": True},
