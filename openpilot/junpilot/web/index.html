@@ -200,12 +200,15 @@
 const $ = s => document.querySelector(s);
 let tab = 'status', settings = null, routeTimer = null;
 
-// 알림 메시지: 화면 아래에 떠 있어서 스크롤해도 계속 보임. 누르면 닫히고, 완료(ok) 알림은 6초 뒤 저절로 사라짐
+// 알림 메시지: 화면 아래에 떠 있어서 스크롤해도 계속 보임. 누르면 닫힘.
+// 완료(ok) 6초·안내(info) 8초 뒤 저절로 사라짐. 진행 중(progress)은 결과로 바뀔 때까지, 오류(err)는 닫을 때까지 남음
 let noteTimer = null;
+const NOTE_HIDE = {ok: 6000, info: 8000};
 function note(text, kind='err') {
   clearTimeout(noteTimer);
-  $('#msg').innerHTML = text ? `<div class="msg ${kind}" onclick="note('')">${esc(text)}<span class="msg-x">✕</span></div>` : '';
-  if (text && kind === 'ok') noteTimer = setTimeout(() => note(''), 6000);
+  const cls = kind === 'progress' ? 'info' : kind;
+  $('#msg').innerHTML = text ? `<div class="msg ${cls}" onclick="note('')">${esc(text)}<span class="msg-x">✕</span></div>` : '';
+  if (text && NOTE_HIDE[kind]) noteTimer = setTimeout(() => note(''), NOTE_HIDE[kind]);
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function size(n) { return n > 1e9 ? (n/1e9).toFixed(1)+'GB' : n > 1e6 ? (n/1e6).toFixed(0)+'MB' : (n/1e3).toFixed(0)+'KB'; }
@@ -230,7 +233,7 @@ async function updateAct(kind) {
   try {
     const j = await post('/api/update/' + kind);
     if (!j.ok) { note('업데이트 프로그램이 응답하지 않아요. 잠시 뒤 다시 시도하거나 복구 페이지를 써 주세요.', 'err'); return; }
-    note(kind === 'download' ? '업데이트를 받고 있어요. 다 받으면 재부팅 버튼이 주황색으로 바뀌어요.' : '새 버전을 확인하고 있어요.', 'info');
+    note(kind === 'download' ? '업데이트를 받고 있어요. 다 받으면 재부팅 버튼이 주황색으로 바뀌어요.' : '새 버전을 확인하고 있어요.', 'progress');
     for (let i = 0; i < 200; i++) {  // 받기는 몇 분 걸릴 수 있음
       await new Promise(r => setTimeout(r, 3000));
       let d;
@@ -453,7 +456,7 @@ async function saveSettings() {
 async function saveDrive() {
   try { await post('/api/drive', {url: $('#drv-url').value, secret: $('#drv-secret').value}); note('구글 드라이브 연결을 저장했어요.', 'ok'); } catch {}
 }
-async function reboot() { if (confirm('장치를 재부팅할까요?')) { try { await post('/api/reboot'); note('재부팅하고 있어요…', 'info'); } catch {} } }
+async function reboot() { if (confirm('장치를 재부팅할까요?')) { try { await post('/api/reboot'); note('재부팅하고 있어요…', 'progress'); } catch {} } }
 async function unpair() { if (confirm('이 기기 연결을 해제할까요?')) { try { await post('/api/unpair'); showPair(); } catch {} } }
 
 // 관리 페이지에 들어오면 한 번 조용히 새 버전 확인 (결과는 상태 탭 업데이트 칸과 버튼 색으로 보여줌)
