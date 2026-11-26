@@ -50,3 +50,29 @@ def test_autogap_uses_learned_gap():
     out = g.update(t, 25.0, True, 3, True, learned=1)
     t += 0.05
   assert out == 1
+
+
+def test_fine_tune_and_verify(tmp_path):
+  lr = cl.CruiseLearner(str(tmp_path / "c.json"))
+  t = 0.0
+  for _ in range(cl.FULL_CURVE):  # 완전 적용까지
+    _u(lr, t, k_max=0.01, curve_limited=True, accel_pressed=True)
+    t += 4
+    _u(lr, t)  # 커브 끝
+    t += 1
+  assert lr.status("curve1", lr.curve_n["1"], cl.FULL_CURVE).startswith("완전 적용")
+  before = lr.curve_lat_adj(0.01)
+  _u(lr, t, k_max=0.01, curve_limited=True, accel_pressed=True)  # 완전 적용 뒤 또 고침 → 절반 폭
+  assert abs(lr.curve_lat_adj(0.01) - before - cl.CURVE_STEP / 2) < 1e-9
+  t += 4
+  _u(lr, t)
+  assert lr.status("curve1", lr.curve_n["1"], cl.FULL_CURVE).startswith("1회 세밀 보정 중")
+  for _ in range(cl.STABLE_PASSES):  # 손대지 않고 커브 감속 구간을 3초씩 지나감
+    t += 1
+    for _ in range(30):
+      _u(lr, t, k_max=0.01, curve_limited=True)
+      t += 0.1
+    _u(lr, t)
+  assert lr.status("curve1", lr.curve_n["1"], cl.FULL_CURVE).startswith("안정")
+  d = cl.describe(lr.path) if lr.save() is None else None
+  assert d["fine_total"] == 1 and d["pass_total"] == cl.STABLE_PASSES

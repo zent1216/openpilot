@@ -44,3 +44,21 @@ def test_scale_is_bounded(tmp_path):
     t, _ = _drive(lr, t, 0.5, 15, 0.01, 0.01, False)
   assert lr.scale(0.01, 15) == cl.SCALE_CLIP[0]
   assert cl.describe(lr.bins)[0]["percent"] == 85
+
+
+def test_fine_tune_status(tmp_path):
+  lr = cl.CurveLearner(str(tmp_path / "l.json"))
+  t = 0.0
+  for _ in range(cl.FULL_COUNT):
+    t, _ = _drive(lr, t, 1.0, 10, 0.01, 0.009, True)
+    t, _ = _drive(lr, t, 0.5, 10, 0.0, 0.0, False)
+  key = cl.bucket(0.01, 10)
+  assert cl.status(lr.bins[key]).startswith("완전 적용")
+  t, _ = _drive(lr, t, 1.0, 10, 0.01, 0.009, True)   # 완전 적용 뒤 또 고침
+  t, _ = _drive(lr, t, 0.5, 10, 0.0, 0.0, False)
+  assert lr.bins[key]["fine"] == 1 and cl.status(lr.bins[key]).startswith("1회 세밀 보정 중")
+  for _ in range(cl.STABLE_PASSES):                   # 고치지 않고 3초씩 지나감
+    t, _ = _drive(lr, t, 3.0, 10, 0.01, 0.01, False)
+    t, _ = _drive(lr, t, 0.5, 10, 0.0, 0.0, False)
+  assert cl.status(lr.bins[key]).startswith("안정")
+  assert cl.describe(lr.bins)[0]["fine"] == 1

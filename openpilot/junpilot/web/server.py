@@ -175,7 +175,8 @@ class App:
     return {
       "curve": {"enabled": bool(s.get("curve_learn", True)), "total": sum(b["samples"] for b in bins),
                 "kinds": len(bins), "full": sum(1 for b in bins if b["samples"] >= curve_learn.FULL_COUNT),
-                "full_count": curve_learn.FULL_COUNT, "bins": bins, "updated": mtime(cl.path)},
+                "full_count": curve_learn.FULL_COUNT, "bins": bins, "updated": mtime(cl.path),
+                "fine_total": sum(b["fine"] for b in bins), "pass_total": sum(b["passes"] for b in bins)},
       "cruise": dict(cr, enabled=bool(s.get("cruise_learn", True)), total=cr_total, updated=mtime(cr_lr.path)),
     }
 

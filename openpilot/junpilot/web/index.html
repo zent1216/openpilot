@@ -381,7 +381,7 @@ function read(group, key, spec) {
 async function loadLearn() {
   const d = await api('/api/curve_learn');
   $('#learn-list').innerHTML = d.bins.length
-    ? d.bins.map(b => row(b.label, `<b>${b.percent}%</b> <small>${b.samples}번 배움</small>`)).join('')
+    ? d.bins.map(b => row(b.label, `<b>${b.percent}%</b> <small>${b.samples}번 배움 · ${esc(b.status)}</small>`)).join('')
     : '<p><small>아직 배운 커브가 없어요. 오파 조향 중 커브에서 핸들을 살짝 돌려 맞춰 주면 배워요.</small></p>';
 }
 function ago(ts) {
@@ -393,8 +393,8 @@ async function loadAi() {
   const d = await api('/api/ai');
   const c = d.curve, k = d.cruise;
   $('#ai-summary').innerHTML =
-    row('코너 조향 학습', `${c.enabled ? '' : '<span class="pill">꺼짐</span> '}<b>${c.total}건</b> <small>${c.kinds}종류 커브 · 완전 적용 ${c.full}종류 · 최근 ${ago(c.updated)}</small>`)
-    + row('크루즈 학습', `${k.enabled ? '' : '<span class="pill">꺼짐</span> '}<b>${k.total}건</b> <small>커브 감속 ${k.curve.length}종류 · 차간 ${k.gap.length}상황 · 최근 ${ago(k.updated)}</small>`);
+    row('코너 조향 학습', `${c.enabled ? '' : '<span class="pill">꺼짐</span> '}<b>${c.total}건</b> <small>${c.kinds}종류 커브 · 완전 적용 ${c.full}종류${c.fine_total ? ` · ${c.fine_total}회 세밀 보정 중` : ''} · 최근 ${ago(c.updated)}</small>`)
+    + row('크루즈 학습', `${k.enabled ? '' : '<span class="pill">꺼짐</span> '}<b>${k.total}건</b> <small>커브 감속 ${k.curve.length}종류 · 차간 ${k.gap.length}상황${k.fine_total ? ` · ${k.fine_total}회 세밀 보정 중` : ''} · 최근 ${ago(k.updated)}</small>`);
   loadLearn().catch(() => {});
   loadCruiseLearn().catch(() => {});
 }
@@ -433,9 +433,9 @@ async function loadCruiseLearn() {
   const d = await api('/api/cruise_learn');
   if (d.empty) { $('#cruise-learn-list').innerHTML = '<p><small>아직 배운 게 없어요. 크루즈 중 커브에서 +/-를 누르거나 차간 버튼으로 단계를 바꾸면 배워요.</small></p>'; return; }
   const rows = [];
-  for (const c of d.curve) rows.push(row(c.label + ' 감속', `<b>${c.value}</b> <small>${c.samples}번 배움</small>`));
-  if (d.margin_samples) rows.push(row('단속 구간 여유', `<b>${d.margin > 0 ? '+' : ''}${d.margin}km/h</b> <small>${d.margin_samples}번 배움</small>`));
-  for (const g of d.gap) rows.push(row('차간 ' + g.label, `<b>${g.gap}단</b> <small>${g.samples}번 배움</small>`));
+  for (const c of d.curve) rows.push(row(c.label + ' 감속', `<b>${c.value}</b> <small>${c.samples}번 배움 · ${esc(c.status)}</small>`));
+  if (d.margin_samples) rows.push(row('단속 구간 여유', `<b>${d.margin > 0 ? '+' : ''}${d.margin}km/h</b> <small>${d.margin_samples}번 배움 · ${esc(d.margin_status)}</small>`));
+  for (const g of d.gap) rows.push(row('차간 ' + g.label, `<b>${g.gap}단</b> <small>${g.samples}번 배움 · ${esc(g.status)}</small>`));
   $('#cruise-learn-list').innerHTML = rows.join('');
 }
 async function resetCruiseLearn() {
