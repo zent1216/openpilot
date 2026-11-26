@@ -37,6 +37,7 @@ JUNPILOT_SETTINGS = {
   # 조향 튜닝: 커브에서 안쪽으로 붙으면 조향 양을 낮추거나 시점을 늦춤
   "curve_steer": {"type": "int", "default": 100, "min": 85, "max": 110,
                   "label": "커브 조향 양 (%) · 안쪽으로 붙으면 낮추기", "ready": True},
+  "curve_learn": {"type": "bool", "default": True, "label": "커브 자가 학습", "ready": True},
   "steer_timing": {"type": "choice", "default": 2, "choices": ["더 일찍", "조금 일찍", "기본", "조금 늦게", "더 늦게"],
                    "label": "조향 시점 · 커브를 일찍 파고들면 늦게", "ready": True},
 }

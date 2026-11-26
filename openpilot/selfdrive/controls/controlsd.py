@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import math
+import os
 import time
 from numbers import Number
 
@@ -69,6 +70,24 @@ class Controls:
       self.LaC = LatControlPID(self.CP, self.CI, DT_CTRL)
     elif self.CP.lateralTuning.which() == 'torque':
       self.LaC = LatControlTorque(self.CP, self.CI, DT_CTRL)
+
+  def jp_curve_learn(self):
+    """커브 자가 학습 (설정에서 끄면 None). 설정·초기화 요청은 1초에 한 번만 확인."""
+    self._jp_learn_n = getattr(self, "_jp_learn_n", 0) - 1
+    if self._jp_learn_n <= 0:
+      self._jp_learn_n = 100
+      try:
+        from openpilot.junpilot.store import get_settings
+        self._jp_learn_on = bool(get_settings().get("curve_learn", True))
+        if self._jp_learn_on and not hasattr(self, "_jp_learner"):
+          from openpilot.junpilot.curve_learn import CurveLearner
+          self._jp_learner = CurveLearner()
+        if self._jp_learn_on and os.path.exists(self._jp_learner.path + ".reset"):  # 관리 화면에서 초기화 요청
+          os.remove(self._jp_learner.path + ".reset")
+          self._jp_learner.reset()
+      except Exception:
+        self._jp_learn_on = False
+    return self._jp_learner if self._jp_learn_on else None
 
   def jp_steer_scale(self) -> float:
     from openpilot.junpilot.store import steer_tuning
@@ -141,9 +160,15 @@ class Controls:
       new_desired_curvature = self.sm['lateralManeuverPlan'].desiredCurvature if CC.latActive else self.curvature
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
-    # 준파일럿: 앱에서 정한 커브 조향 양 (각도 조향 차)
-    if CC.latActive and self.CP.steerControlType == car.CarParams.SteerControlType.angle:
-      new_desired_curvature *= self.jp_steer_scale()
+    # 준파일럿: 앱에서 정한 커브 조향 양 × 커브 자가 학습 배율 (각도 조향 차)
+    if self.CP.steerControlType == car.CarParams.SteerControlType.angle:
+      model_curv = new_desired_curvature
+      learn = self.jp_curve_learn()
+      if learn is not None:
+        learn.update(time.monotonic(), CS.vEgo, model_curv, self.curvature, CC.latActive, CS.steeringPressed,
+                     CS.leftBlinker or CS.rightBlinker)
+      if CC.latActive:
+        new_desired_curvature *= self.jp_steer_scale() * (learn.scale(model_curv, CS.vEgo) if learn is not None else 1.0)
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_smooth = LAT_SMOOTH_SECONDS_ANGLE if self.CP.steerControlType == car.CarParams.SteerControlType.angle else LAT_SMOOTH_SECONDS
     lat_delay = self.sm["lateralDelay"].lateralDelay + lat_smooth

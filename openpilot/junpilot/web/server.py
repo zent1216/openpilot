@@ -28,7 +28,6 @@ MAX_FAILS = 5
 LOCK_TIME = 60
 COOKIE = "junpilot_token"
 INDEX_HTML = os.path.join(os.path.dirname(__file__), "index.html")
-LIVE_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live.html")
 APP_DIR = os.path.join(os.path.dirname(__file__), "app")  # 휴대폰 앱 APK (junpilot-app 빌드 결과를 함께 배포)
 
 class _StreamWriter:
@@ -346,51 +345,12 @@ def make_handler(app: App):
       finally:
         app.broadcaster.unsubscribe(q)
 
-    def _live_video(self):
-      """주행 화면 영상(H.264)을 끊김 없이 흘려 보낸다. 폰이 연결을 끊으면 끝."""
-      from openpilot.junpilot import live
-      stopped = [False]
-      self.send_response(200)
-      self.send_header("Content-Type", "application/octet-stream")
-      self.send_header("Cache-Control", "no-store")
-      self.send_header("Connection", "close")
-      self.end_headers()
-      self.close_connection = True
-      try:
-        for chunk in live.video_frames(lambda: stopped[0]):
-          self.wfile.write(chunk)
-          self.wfile.flush()
-      except OSError:
-        pass
-      finally:
-        stopped[0] = True
-
-    def _live_overlay(self):
-      """차선·경로·앞차 위치와 속도 표시를 초당 15번 보낸다 (SSE)."""
-      from openpilot.junpilot import live
-      stopped = [False]
-      self.send_response(200)
-      self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-      self.send_header("Cache-Control", "no-store")
-      self.end_headers()
-      try:
-        for data in live.overlay_frames(lambda: stopped[0]):
-          self.wfile.write(f"data: {data}\n\n".encode())
-          self.wfile.flush()
-      except OSError:
-        pass
-      finally:
-        stopped[0] = True
-
     def _get(self):
       if not self._guard():
         return
       path = urlparse(self.path).path
       if path in ("/", "/index.html"):
         with open(INDEX_HTML, "rb") as f:
-          return self._send(200, body=f.read(), ctype="text/html; charset=utf-8")
-      if path == "/live":
-        with open(LIVE_HTML, "rb") as f:
           return self._send(200, body=f.read(), ctype="text/html; charset=utf-8")
       if path == "/api/app/version":
         return self._send(200, app_version())
@@ -412,6 +372,13 @@ def make_handler(app: App):
                                   "nmirror": app.nmirror.status() if app.nmirror else None,
                                   "job": app.job.status() if app.job else None,
                                   "report": app.report_status()})
+        if path == "/api/curve_learn/reset":
+          from openpilot.junpilot import curve_learn
+          learner = curve_learn.CurveLearner()
+          learner.reset()  # 꺼져 있을 때 바로 지움
+          with open(learner.path + ".reset", "w"):  # 주행 중이면 조향 프로세스가 1초 안에 지움
+            pass
+          return self._send(200, {"ok": True})
         if path == "/api/settings":
           return self._send(200, app.get_settings())
         if path == "/api/routes":
@@ -422,17 +389,13 @@ def make_handler(app: App):
           return self._send(200, {"drives": tracker.list_drives(drives_dir())})
         if path.startswith("/api/drives/"):
           return self._send(200, tracker.load_drive(drives_dir(), path.rsplit("/", 1)[1]))
+        if path == "/api/curve_learn":
+          from openpilot.junpilot import curve_learn
+          return self._send(200, {"bins": curve_learn.describe(curve_learn.CurveLearner().bins)})
         if path == "/api/tuning":
           return self._send(200, app.tuning())
         if path == "/api/events":
           return self._stream()
-        if path == "/api/live/status":
-          from openpilot.junpilot import live
-          return self._send(200, dict(live.status(), onroad=app.dev.is_onroad()))
-        if path == "/api/live/video":
-          return self._live_video()
-        if path == "/api/live/overlay":
-          return self._live_overlay()
         if path == "/api/job":
           return self._send(200, {"job": app.job.status() if app.job else None})
         if path.startswith("/api/download_all/"):

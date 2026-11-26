@@ -1,5 +1,4 @@
 import os
-import time
 import operator
 import platform
 
@@ -66,13 +65,6 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
   return params.get_bool("IsLiveStreaming")
 
-def junpilot_live(started: bool, params: Params, CP: car.CarParams) -> bool:
-  # 준파일럿: 폰에서 주행 화면을 보는 중 (관리 서버가 2초마다 표시 파일을 갱신)
-  try:
-    return time.time() - os.path.getmtime("/dev/shm/junpilot_live") < 10.0  # noqa: TID251  파일 시각과 비교
-  except OSError:
-    return False
-
 def or_(*fns):
   return lambda *args: any(fn(*args) for fn in fns)
 
@@ -84,10 +76,10 @@ procs = [
 
   NativeProcess("loggerd", "openpilot/system/loggerd", ["./loggerd"], logging),
   NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], only_onroad),
-  NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar, junpilot_live)),
+  NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
   PythonProcess("logmessaged", "openpilot.system.logmessaged", always_run),
 
-  NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream, junpilot_live), enabled=not WEBCAM),
+  NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream), enabled=not WEBCAM),
   PythonProcess("webcamerad", "openpilot.system.camerad.webcam.camerad", driverview, enabled=WEBCAM),
   PythonProcess("proclogd", "openpilot.system.proclogd", only_onroad, enabled=platform.system() != "Darwin"),
   PythonProcess("journald", "openpilot.system.journald", only_onroad, platform.system() != "Darwin"),
