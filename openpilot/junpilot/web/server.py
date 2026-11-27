@@ -30,6 +30,21 @@ COOKIE = "junpilot_token"
 INDEX_HTML = os.path.join(os.path.dirname(__file__), "index.html")
 APP_DIR = os.path.join(os.path.dirname(__file__), "app")  # 휴대폰 앱 APK (junpilot-app 빌드 결과를 함께 배포)
 
+
+UPDATE_PROGRESS_FILE = "/tmp/junpilot_update_progress.json"  # system/updated/updated.py가 적음
+
+
+def update_progress() -> dict | None:
+  """업데이트 받기·설치 진행률 (최근 2분 안에 갱신된 것만)."""
+  try:
+    with open(UPDATE_PROGRESS_FILE) as f:
+      d = json.load(f)
+    if time.time() - float(d.get("t", 0)) > 120:  # noqa: TID251
+      return None
+    return {"pct": float(d.get("pct", 0)), "stage": str(d.get("stage", ""))}
+  except (OSError, ValueError):
+    return None
+
 class _StreamWriter:
   """zip을 다 만들지 않고 바로 보내기 위한, 위치만 세는 쓰기 전용 래퍼."""
   def __init__(self, f):
@@ -395,7 +410,8 @@ def make_handler(app: App):
                                   "nmirror": app.nmirror.status() if app.nmirror else None,
                                   "job": app.job.status() if app.job else None,
                                   "report": app.report_status(),
-                                  "dev_mode": bool(store.load("dev.json", {}).get("on", False))})
+                                  "dev_mode": bool(store.load("dev.json", {}).get("on", False)),
+                                  "update_progress": update_progress()})
         if path == "/api/settings":
           return self._send(200, app.get_settings())
         if path == "/api/routes":

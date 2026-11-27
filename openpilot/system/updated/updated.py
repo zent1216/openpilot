@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import json
 import re
 import datetime
 import subprocess
@@ -68,6 +69,49 @@ def write_time_to_param(params, param) -> None:
 
 def run(cmd: list[str], cwd: str | None = None) -> str:
   return subprocess.check_output(cmd, cwd=cwd, stderr=subprocess.STDOUT, encoding='utf8')
+
+
+# 준파일럿: 업데이트 진행률 (관리 페이지에 % 표시). 단계별 구간을 나눠 0~100으로 적는다.
+PROGRESS_FILE = "/tmp/junpilot_update_progress.json"
+
+
+def set_progress(pct: float, stage: str) -> None:
+  try:
+    tmp = PROGRESS_FILE + ".tmp"
+    with open(tmp, "w") as f:
+      json.dump({"pct": round(max(0.0, min(pct, 100.0)), 1), "stage": stage, "t": time.time()}, f)  # noqa: TID251
+    os.replace(tmp, PROGRESS_FILE)
+  except OSError:
+    pass
+
+
+def run_git_progress(cmd: list[str], cwd: str, lo: float, hi: float, stage: str) -> str:
+  """git 명령을 --progress로 돌리며 'Receiving objects: 45%' 같은 줄로 진행률을 적는다.
+  받기(Receiving)는 구간의 앞 85%, 정리(Resolving deltas)는 뒤 15%."""
+  proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+  out = b""
+  buf = b""
+  assert proc.stdout is not None
+  while True:
+    ch = proc.stdout.read(1)
+    if not ch:
+      break
+    out += ch
+    if ch in (b"\r", b"\n"):
+      line = buf.decode("utf8", "ignore")
+      buf = b""
+      m = re.search(r"(Receiving objects|Resolving deltas):\s+(\d+)%", line)
+      if m:
+        p = int(m.group(2)) / 100.0
+        frac = 0.85 * p if m.group(1).startswith("Receiving") else 0.85 + 0.15 * p
+        set_progress(lo + (hi - lo) * frac, stage)
+    else:
+      buf += ch
+  ret = proc.wait()
+  text = out.decode("utf8", "ignore")
+  if ret != 0:
+    raise subprocess.CalledProcessError(ret, cmd, output=text)
+  return text
 
 
 def set_consistent_flag(consistent: bool) -> None:
@@ -183,7 +227,17 @@ def finalize_update() -> None:
   # Copy the merged overlay view and set the update ready flag
   if os.path.exists(FINALIZED):
     shutil.rmtree(FINALIZED)
-  shutil.copytree(OVERLAY_MERGED, FINALIZED, symlinks=True)
+  # 준파일럿: 복사 진행률 (80~95%)
+  total = sum(len(f) for _, _, f in os.walk(OVERLAY_MERGED)) or 1
+  copied = [0]
+
+  def copy_with_progress(src, dst, *, follow_symlinks=True):
+    copied[0] += 1
+    if copied[0] % 200 == 0:
+      set_progress(80 + 15 * copied[0] / total, "설치 준비 중")
+    return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+  shutil.copytree(OVERLAY_MERGED, FINALIZED, symlinks=True, copy_function=copy_with_progress)
+  set_progress(95, "정리 중")
 
   run(["git", "reset", "--hard"], FINALIZED)
   run(["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"], FINALIZED)
@@ -381,7 +435,8 @@ class Updater:
     run(["git", "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"], OVERLAY_MERGED)
 
     branch = self.target_branch
-    git_fetch_output = run(["git", "fetch", "origin", branch], OVERLAY_MERGED)
+    set_progress(0, "받는 중")
+    git_fetch_output = run_git_progress(["git", "fetch", "--progress", "origin", branch], OVERLAY_MERGED, 0, 60, "받는 중")
     cloudlog.info("git fetch success: %s", git_fetch_output)
 
     cloudlog.info("git reset in progress")
@@ -396,8 +451,12 @@ class Updater:
       ["git", "submodule", "update", "--init", "--recursive"],
       ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
     ]
-    r = [run(cmd, OVERLAY_MERGED) for cmd in cmds]
+    r = []
+    for i, cmd in enumerate(cmds):
+      set_progress(60 + 15 * i / len(cmds), "파일 적용 중")
+      r.append(run(cmd, OVERLAY_MERGED))
     cloudlog.info("git reset success: %s", '\n'.join(r))
+    set_progress(75, "파일 적용 중")
 
     # Only checkouts with LFS files need a client, so release updates don't depend on git-lfs
     if run(["git", "ls-files", ":(attr:filter=lfs)"], OVERLAY_MERGED):
@@ -410,7 +469,9 @@ class Updater:
 
     # Create the finalized, ready-to-swap update
     self.params.put("UpdaterState", "finalizing update...", block=True)
+    set_progress(80, "설치 준비 중")
     finalize_update()
+    set_progress(100, "완료")
     cloudlog.info("finalize success!")
 
 
