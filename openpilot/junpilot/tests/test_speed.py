@@ -212,3 +212,26 @@ def test_cutin_latched(planner):
   for _ in range(40):
     t = step(p, clk, c, model(50 * KPH))
   assert abs(t * 3.6 - 60) < 0.1
+
+
+def test_driver_raise_pauses_lead_assist(planner):
+  p, clk = planner
+  c = cs(80, v_kph=40)
+  p.update(cs(80), model(80 * KPH))
+  p.lead = lead(12, 35, 40)
+  assert abs(step(p, clk, c, model(40 * KPH)) * 3.6 - 30) < 0.1
+  # 운전자가 RES+로 올림 → 20초 동안 다시 끌어내리지 않음
+  c.buttonEvents = [NS(type="accelCruise", pressed=True)]
+  step(p, clk, c, model(40 * KPH))
+  c.buttonEvents = []
+  for _ in range(20):
+    t = step(p, clk, c, model(40 * KPH))
+  assert t == 0 or t * 3.6 > 35
+
+
+def test_faster_cutin_ignored(planner):
+  p, clk = planner
+  c = cs(80, v_kph=70)
+  p.update(cs(80), model(80 * KPH))
+  c.junpilotCutInSpeed, c.junpilotCutInDist = 90 * KPH, 30.0
+  assert abs(step(p, clk, c, model(70 * KPH)) * 3.6 - 80) < 0.1

@@ -38,7 +38,11 @@ LEAD_OPENING = 0.5                   # m/s, 이보다 빨리 멀어지면 '벌�
 LEAD_RELEASE_THW = 0.4               # 기준보다 이만큼 멀어지면 풀기
 LEAD_RELEASE_TIME = 2.0              # 벌어짐이 이만큼 이어지면 풀기
 LEAD_STEP = 5 * KPH                  # 설정속도는 이 단위로만 내림 (버튼 덜 누르게)
-ASSIST_MIN_SPEED = 20 * KPH          # 이보다 느리면 순정이 알아서 함 (설정속도 최저 30km/h)
+ASSIST_MIN_SPEED = 20 * KPH
+DRIVER_ASSIST_PAUSE = 20.0           # 운전자가 크루즈 속도 버튼을 누르면 이만큼 앞차·끼어들기 감속 안 함
+GAS_ASSIST_PAUSE = 5.0               # 가속 페달을 떼고 이만큼
+CUTIN_FASTER_IGNORE = 3 * KPH        # 끼어드는 차가 우리보다 이만큼 빠르면 무시 (가까우면 예외)
+CUTIN_NEAR = 12.0                    # m          # 이보다 느리면 순정이 알아서 함 (설정속도 최저 30km/h)
 
 RELEASE_MARGIN = 3 * KPH  # 제한이 이만큼 넉넉해져야 속도를 다시 올림
 RELEASE_TIME = 1.0
@@ -78,6 +82,7 @@ class SpeedPlanner:
     self.lead = None       # controlsd가 넣어 줌: radarState.leadOne
     self.lead_lim = math.inf
     self.cut_lim = math.inf
+    self.assist_off_until = 0.0
     self.lead_open_t: float | None = None
     self.learner: CruiseLearner | None = None
     self.learned = ""
@@ -113,6 +118,10 @@ class SpeedPlanner:
     pressed = {str(be.type).split(".")[-1] for be in CS.buttonEvents if getattr(be, "pressed", True)}
     if any(be.type in ("accelCruise", "decelCruise", "setCruise", "resumeCruise") for be in CS.buttonEvents):
       self.driver_pending_t = now
+      # 운전자가 직접 속도를 바꾸면 앞차·끼어들기 감속은 잠시 쉼 (예: 앞차 가까운데 일부러 올렸더니 다시 끌어내림)
+      self.assist_off_until = now + DRIVER_ASSIST_PAUSE
+    if getattr(CS, "gasPressed", False):
+      self.assist_off_until = max(self.assist_off_until, now + GAS_ASSIST_PAUSE)
     if self.driver_pending_t is not None and now - self.driver_pending_t > 0.6:
       self.driver_set = set_speed  # 운전자가 바꾼 값이 반영된 뒤 기억
       self.driver_pending_t = None
@@ -195,6 +204,9 @@ class SpeedPlanner:
     thw = LEAD_THW.get(int(s.get("lead_slowdown", 2)))
     l = self.lead
     now = self.clock()
+    if now < self.assist_off_until:
+      self.lead_lim, self.lead_open_t = math.inf, None
+      return math.inf
     if thw is None or l is None or not l.present or CS.vEgo < ASSIST_MIN_SPEED or not CS.cruiseState.enabled:
       self.lead_lim, self.lead_open_t = math.inf, None
       return math.inf
@@ -216,6 +228,11 @@ class SpeedPlanner:
   def _cutin_limit(self, CS, s) -> float:
     """끼어들기 감지 순간의 값으로 고정 (계속 다시 계산하면 우리 속도 따라 끝없이 내려감)."""
     v_cut = float(getattr(CS, "junpilotCutInSpeed", 0.0) or 0.0)
+    d_cut = float(getattr(CS, "junpilotCutInDist", 0.0) or 0.0)
+    if v_cut > CS.vEgo + CUTIN_FASTER_IGNORE and d_cut > CUTIN_NEAR:
+      v_cut = 0.0  # 우리보다 빠른 차가 멀찍이 들어오면 줄일 필요 없음
+    if self.clock() < self.assist_off_until:
+      v_cut = 0.0
     if not s.get("cutin_slowdown", True) or v_cut <= 0 or CS.vEgo < ASSIST_MIN_SPEED or not CS.cruiseState.enabled:
       self.cut_lim = math.inf
       return math.inf
