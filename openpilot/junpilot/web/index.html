@@ -325,7 +325,7 @@ async function loadRoutes() {
     <div class="route">
       <div class="top"><span class="name">${esc(r.route)}</span><span class="k">${when(r.mtime)}</span></div>
       <small>${r.segments.length}구간 · ${size(r.size)} · ${r.kinds.map(k => ({qlog:'요약',rlog:'원본',qcamera:'영상'}[k])).join(', ')}</small>
-      <div class="grid2"><button class="b dev-only" onclick="send('${esc(r.route)}')">드라이브로 보내기</button>
+      <div class="grid2"><button class="b dev-only send-b" data-route="${esc(r.route)}" onclick="send('${esc(r.route)}')">드라이브로 보내기</button>
       <button class="b ghost" onclick="$('#dl-${i}').hidden = !$('#dl-${i}').hidden">파일 받기</button></div>
       <div id="dl-${i}" hidden>
         <div class="grid2"><button class="b ghost" onclick="dlAll('${esc(r.route)}', 'qlog')">요약 전체 받기</button>
@@ -343,12 +343,25 @@ async function send(route) {
   if (!kinds.length) return note('보낼 항목을 하나 이상 골라 주세요.');
   try { await post('/api/send', {route, kinds, note: $('#note').value}); note('전송을 시작했어요.', 'ok'); loadJob(); } catch {}
 }
+let jobWasRunning = false;
 async function loadJob() {
   const {job} = await api('/api/job');
   if (!job) return;
+  // 누른 버튼과 아래 알림에도 진행률 표시 (위쪽 전송 상태 카드는 스크롤하면 안 보여서)
+  const running = job.state === '대기' || job.state === '전송 중';
+  const pct = Math.floor(job.progress);
+  const mb = `${size(job.sent_bytes || 0)} / ${size(job.total_bytes || 0)}`;
+  document.querySelectorAll('.send-b').forEach(b => {
+    const mine = running && b.dataset.route === job.route;
+    b.textContent = mine ? `보내는 중… ${pct}%` : '드라이브로 보내기';
+    b.disabled = running;
+  });
+  if (running) note(`드라이브로 보내는 중… ${pct}% (${mb})`, 'progress');
+  else if (jobWasRunning) note(job.state === '완료' ? '드라이브에 다 올렸어요.' : `보내지 못했어요: ${job.error || ''}`, job.state === '완료' ? 'ok' : 'err');
+  jobWasRunning = running;
   const cls = job.state === '완료' ? 'ok' : job.state === '실패' ? 'bad' : 'acc';
   $('#job').innerHTML = `<div class="top" style="display:flex;justify-content:space-between"><span class="name" style="font-size:12px">${esc(job.bundle)}</span><span class="pill ${cls}">${esc(job.state)}</span></div>
-    <div class="bar"><i style="width:${job.progress}%"></i></div><small>${job.progress}% · 파일 ${job.files.length}개</small>
+    <div class="bar"><i style="width:${job.progress}%"></i></div><small>${job.progress}% · ${size(job.sent_bytes || 0)} / ${size(job.total_bytes || 0)} · 파일 ${job.files.length}개</small>
     ${job.error ? `<div class="msg err" style="margin-top:8px">${esc(job.error)}</div>` : ''}
     ${job.link && job.state === '완료' ? `<p><a href="${esc(job.link)}" target="_blank">드라이브에서 폴더 열기</a></p>` : ''}
     ${job.state === '완료' ? '<div class="msg ok" style="margin-top:8px">Claude에게 "로그 올렸어"라고 알려 주세요.</div>' : ''}`;

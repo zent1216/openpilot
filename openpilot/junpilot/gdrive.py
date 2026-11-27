@@ -24,7 +24,7 @@ UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resuma
 SCOPE = "https://www.googleapis.com/auth/drive.file"
 ROOT_FOLDER = "준파일럿"
 FOLDER_MIME = "application/vnd.google-apps.folder"
-CHUNK = 8 * 1024 * 1024  # 256KB의 배수
+CHUNK = 2 * 1024 * 1024  # 256KB의 배수 (작을수록 진행률이 자주 바뀜)
 TOKEN_FILE = "gdrive.json"
 
 

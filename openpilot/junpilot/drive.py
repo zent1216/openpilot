@@ -57,7 +57,8 @@ class UploadJob:
 
   def status(self) -> dict:
     return {"bundle": self.bundle, "state": self.state, "error": self.error,
-            "progress": round(100 * self.sent_bytes / self.total_bytes, 1),
+            "progress": min(100.0, round(100 * self.sent_bytes / self.total_bytes, 1)),
+            "sent_bytes": self.sent_bytes, "total_bytes": self.total_bytes, "route": self.meta.get("route", ""),
             "files": [n for n, _ in self.files], "started": self.started, "finished": self.finished, "link": self.link}
 
   def _send_bytes(self, cfg: dict, name: str, data_iter, total_parts: int):
@@ -84,7 +85,7 @@ class UploadJob:
     def add(n):
       self.sent_bytes += n
     meta = json.dumps(self.meta, ensure_ascii=False, indent=2).encode()
-    gdrive.upload("meta.json", sub["id"], len(meta), [meta], add)
+    gdrive.upload("meta.json", sub["id"], len(meta), [meta])
     for name, path in self.files:
       size = os.path.getsize(path)
 
