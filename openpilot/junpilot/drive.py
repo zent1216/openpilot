@@ -5,6 +5,7 @@
 """
 import base64
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 import threading
 import time
@@ -14,6 +15,7 @@ import requests
 from openpilot.junpilot import store
 
 CHUNK = 8 * 1024 * 1024  # 원본 8MB (base64 후 약 11MB, Apps Script 한도 50MB 이내)
+PARALLEL = 3  # 구글 로그인 방식: 동시에 올리는 파일 수
 
 
 def get_config() -> dict:
@@ -82,18 +84,27 @@ class UploadJob:
     sub = gdrive.folder(self.bundle, root["id"])
     self.link = sub.get("webViewLink", "")
 
+    lock = threading.Lock()
+
     def add(n):
-      self.sent_bytes += n
+      with lock:
+        self.sent_bytes += n
     meta = json.dumps(self.meta, ensure_ascii=False, indent=2).encode()
     gdrive.upload("meta.json", sub["id"], len(meta), [meta])
-    for name, path in self.files:
+
+    def one(item):
+      name, path = item
       size = os.path.getsize(path)
 
-      def chunks(p=path):
-        with open(p, "rb") as f:
+      def chunks():
+        with open(path, "rb") as f:
           while b := f.read(gdrive.CHUNK):
             yield b
       gdrive.upload(name, sub["id"], size, chunks(), add)
+    # 휴대폰 핫스팟은 한 줄로 보내면 왕복 대기 때문에 느림: 파일 여러 개를 동시에 보냄
+    with ThreadPoolExecutor(max_workers=PARALLEL) as ex:
+      for _ in ex.map(one, self.files):
+        pass
 
   def run(self):
     cfg = get_config()

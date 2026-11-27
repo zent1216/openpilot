@@ -74,3 +74,27 @@ def test_set_client(tmp_path, monkeypatch):
     gdrive.set_client("bad", "x")
   gdrive.set_client(" a.apps.googleusercontent.com ", "s")
   assert gdrive.client()["client_id"] == "a.apps.googleusercontent.com"
+
+
+def test_job_uploads_files_in_parallel(tmp_path, monkeypatch):
+  from openpilot.junpilot import drive
+  files = []
+  for i in range(5):
+    p = tmp_path / f"{i}.bin"
+    p.write_bytes(b"x" * (1000 + i))
+    files.append((f"{i}_rlog.zst", str(p)))
+  monkeypatch.setattr(gdrive, "connected", lambda: True)
+  monkeypatch.setattr(gdrive, "folder", lambda name, parent=None: {"id": "f", "webViewLink": "L"})
+  got = []
+
+  def up(name, parent, size, chunks, on_bytes=lambda n: None):
+    data = b"".join(chunks)
+    assert len(data) == size
+    on_bytes(size)
+    got.append(name)
+    return {}
+  monkeypatch.setattr(gdrive, "upload", up)
+  job = drive.UploadJob("b", files, {"route": "r"})
+  job.run()
+  st = job.status()
+  assert st["state"] == "완료" and st["progress"] == 100.0 and sorted(got) == sorted(["meta.json"] + [n for n, _ in files])
