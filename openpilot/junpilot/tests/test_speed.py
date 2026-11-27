@@ -156,3 +156,55 @@ def test_steer_tuning_settings(tmp_path, monkeypatch):
   assert abs(scale - 0.92) < 1e-9 and off == -0.05
   with pytest.raises(ValueError):
     store.validate_setting("curve_steer", 70)
+
+
+def lead(d, v_lead_kph, v_ego_kph):
+  return NS(present=True, dRel=d, vLead=v_lead_kph * KPH, vRel=(v_lead_kph - v_ego_kph) * KPH)
+
+
+def test_lead_close_slows_and_releases(planner):
+  p, clk = planner
+  c = cs(80, v_kph=40)
+  c.cruiseState.speed = 80 * KPH
+  p.update(cs(80), model(80 * KPH))  # 운전자 설정 80 기억
+  # 40km/h에서 앞차 12m(1.08초), 앞차 35km/h로 다가감 → 앞차보다 낮게, 5km/h 단위
+  p.lead = lead(12, 35, 40)
+  for _ in range(5):
+    t = step(p, clk, c, model(40 * KPH))
+  assert abs(t * 3.6 - 30) < 0.1  # floor((35-3)/5)*5 = 30
+  # 앞차가 조금 빨라져도(36) 바로 올리지 않음 (버튼 덜 누르게)
+  p.lead = lead(12.5, 36, 40)
+  t = step(p, clk, c, model(40 * KPH))
+  assert abs(t * 3.6 - 30) < 0.1
+  # 충분히 멀어지면(1.2+0.4초 이상) 원래 속도로
+  p.lead = lead(25, 45, 40)
+  for _ in range(40):
+    t = step(p, clk, c, model(40 * KPH))
+  assert abs(t * 3.6 - 80) < 0.1
+
+
+def test_lead_far_or_not_closing_untouched(planner):
+  p, clk = planner
+  c = cs(80, v_kph=40)
+  p.update(cs(80), model(80 * KPH))
+  p.lead = lead(30, 35, 40)  # 2.7초: 멀다
+  assert abs(step(p, clk, c, model(40 * KPH)) * 3.6 - 80) < 0.1
+  p.lead = lead(12, 41, 40)  # 가깝지만 멀어지는 중
+  assert abs(step(p, clk, c, model(40 * KPH)) * 3.6 - 80) < 0.1
+
+
+def test_cutin_latched(planner):
+  p, clk = planner
+  c = cs(80, v_kph=60)
+  p.update(cs(80), model(80 * KPH))
+  c.junpilotCutInSpeed = 50 * KPH
+  t = step(p, clk, c, model(60 * KPH))
+  assert abs(t * 3.6 - 45) < 0.1  # floor((50-5)/5)*5
+  c.vEgo = 50 * KPH  # 우리가 느려져도 더 내려가지 않음
+  assert abs(step(p, clk, c, model(50 * KPH)) * 3.6 - 45) < 0.1
+  store.set_settings({"cutin_slowdown": False})
+  p.settings_t = -10
+  c.junpilotCutInSpeed = 0.0
+  for _ in range(40):
+    t = step(p, clk, c, model(50 * KPH))
+  assert abs(t * 3.6 - 80) < 0.1

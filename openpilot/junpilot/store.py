@@ -37,6 +37,9 @@ JUNPILOT_SETTINGS = {
   # 조향 튜닝: 커브에서 안쪽으로 붙으면 조향 양을 낮추거나 시점을 늦춤
   "curve_steer": {"type": "int", "default": 100, "min": 85, "max": 110,
                   "label": "커브 조향 양 (%) · 안쪽으로 붙으면 낮추기", "ready": True},
+  "lead_slowdown": {"type": "choice", "default": 2, "choices": ["끔", "1.0초", "1.2초", "1.5초"],
+                    "label": "앞차에 붙으면 미리 감속", "ready": True},
+  "cutin_slowdown": {"type": "bool", "default": True, "label": "옆 차 끼어들기 감속", "ready": True},
   "cruise_learn": {"type": "bool", "default": True, "label": "스마트크루즈 자가 학습", "ready": True},
   "curve_learn": {"type": "bool", "default": True, "label": "커브 자가 학습", "ready": True},
   "steer_timing": {"type": "choice", "default": 2, "choices": ["더 일찍", "조금 일찍", "기본", "조금 늦게", "더 늦게"],

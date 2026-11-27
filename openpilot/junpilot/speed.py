@@ -30,6 +30,16 @@ CURVE_LAT = {0: None, 1: 2.6, 2: 2.2, 3: 1.8}
 # 관리 페이지 서버(주행 기록기)가 읽는 계획기 상태. 장치에서만 기록 (PC 테스트에서는 끔)
 DEBUG_PATH = os.getenv("JUNPILOT_SPEED_DEBUG", "/dev/shm/junpilot_speed.json" if os.path.isdir("/dev/shm") and os.path.exists("/AGNOS") else "")
 
+LEAD_THW = {1: 1.0, 2: 1.2, 3: 1.5}  # 앞차 근접 감속 기준 (초)
+LEAD_CLOSING = 0.3                   # m/s, 이보다 빨리 가까워질 때만
+LEAD_BELOW = 3 * KPH                 # 앞차 속도보다 이만큼 낮게
+CUTIN_BELOW = 5 * KPH                # 끼어들기: 우리·끼어드는 차 중 느린 쪽보다 이만큼 낮게
+LEAD_OPENING = 0.5                   # m/s, 이보다 빨리 멀어지면 '벌어짐'
+LEAD_RELEASE_THW = 0.4               # 기준보다 이만큼 멀어지면 풀기
+LEAD_RELEASE_TIME = 2.0              # 벌어짐이 이만큼 이어지면 풀기
+LEAD_STEP = 5 * KPH                  # 설정속도는 이 단위로만 내림 (버튼 덜 누르게)
+ASSIST_MIN_SPEED = 20 * KPH          # 이보다 느리면 순정이 알아서 함 (설정속도 최저 30km/h)
+
 RELEASE_MARGIN = 3 * KPH  # 제한이 이만큼 넉넉해져야 속도를 다시 올림
 RELEASE_TIME = 1.0
 
@@ -64,6 +74,10 @@ class SpeedPlanner:
     self.debug: dict = {}
     self.debug_t = 0.0
     self.has_lead = False  # controlsd가 넣어 줌 (차간거리 학습용)
+    self.lead = None       # controlsd가 넣어 줌: radarState.leadOne
+    self.lead_lim = math.inf
+    self.cut_lim = math.inf
+    self.lead_open_t: float | None = None
     self.learner: CruiseLearner | None = None
     self.learned = ""
 
@@ -142,7 +156,10 @@ class SpeedPlanner:
       learned_margin = self.learner.margin_adj() if self.learner is not None else 0.0
       self.camera_limit = navi + (s.get("navi_margin", 0) + learned_margin) * KPH
 
-    want = max(min(self.driver_set, lim_curve, self.camera_limit), MIN_TARGET)
+    lim_lead = self._lead_limit(CS, s)
+    lim_cutin = self._cutin_limit(CS, s)
+
+    want = max(min(self.driver_set, lim_curve, self.camera_limit, lim_lead, lim_cutin), MIN_TARGET)
 
     # 내릴 때는 바로, 올릴 때는 여유가 생기고 잠시 유지돼야 올림 (출렁임 방지)
     if self.target <= 0 or want < self.target:
@@ -159,9 +176,47 @@ class SpeedPlanner:
 
     self.debug = {"driver_set": self.driver_set, "curve": lim_curve if math.isfinite(lim_curve) else 0.0,
                   "camera": self.camera_limit if math.isfinite(self.camera_limit) else 0.0, "target": self.target,
-                  "navi_kind": navi_kind, "navi_limit": navi}
+                  "navi_kind": navi_kind, "navi_limit": navi,
+                  "lead": lim_lead if math.isfinite(lim_lead) else 0.0, "cutin": lim_cutin if math.isfinite(lim_cutin) else 0.0}
     self._write_debug(now)
     return self.target
+
+  def _lead_limit(self, CS, s) -> float:
+    """앞차에 시간 간격 기준보다 가깝고 계속 다가가면: 앞차 속도보다 조금 낮게.
+
+    버튼을 자주 누르지 않게(크루즈 먹통 방지) 5km/h 단위로 내리고,
+    한 번 켜지면 충분히 멀어지거나(기준+0.4초) 2초 넘게 벌어질 때까지 유지한다.
+    """
+    thw = LEAD_THW.get(int(s.get("lead_slowdown", 2)))
+    l = self.lead
+    now = self.clock()
+    if thw is None or l is None or not l.present or CS.vEgo < ASSIST_MIN_SPEED or not CS.cruiseState.enabled:
+      self.lead_lim, self.lead_open_t = math.inf, None
+      return math.inf
+    gap_t = l.dRel / max(CS.vEgo, 0.1)
+    if not math.isfinite(self.lead_lim):
+      if gap_t >= thw or l.vRel > -LEAD_CLOSING:
+        return math.inf
+    else:
+      opening = l.vRel > LEAD_OPENING
+      self.lead_open_t = (self.lead_open_t or now) if opening else None
+      if gap_t >= thw + LEAD_RELEASE_THW or (self.lead_open_t is not None and now - self.lead_open_t >= LEAD_RELEASE_TIME):
+        self.lead_lim, self.lead_open_t = math.inf, None
+        return math.inf
+    step = LEAD_STEP
+    want = max(math.floor((l.vLead - LEAD_BELOW) / step) * step, MIN_TARGET)
+    self.lead_lim = min(self.lead_lim, want)
+    return self.lead_lim
+
+  def _cutin_limit(self, CS, s) -> float:
+    """끼어들기 감지 순간의 값으로 고정 (계속 다시 계산하면 우리 속도 따라 끝없이 내려감)."""
+    v_cut = float(getattr(CS, "junpilotCutInSpeed", 0.0) or 0.0)
+    if not s.get("cutin_slowdown", True) or v_cut <= 0 or CS.vEgo < ASSIST_MIN_SPEED or not CS.cruiseState.enabled:
+      self.cut_lim = math.inf
+      return math.inf
+    if not math.isfinite(self.cut_lim):
+      self.cut_lim = max(math.floor((min(CS.vEgo, v_cut) - CUTIN_BELOW) / LEAD_STEP) * LEAD_STEP, MIN_TARGET)
+    return self.cut_lim
 
   def _write_debug(self, now: float):
     if not DEBUG_PATH or now - self.debug_t < 0.5:

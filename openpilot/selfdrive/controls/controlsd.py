@@ -42,7 +42,7 @@ class Controls:
 
     self.sm = messaging.SubMaster(['lateralDelay', 'vehicleParameters', 'lateralTorqueParameters', 'modelV2', 'selfdriveState',
                                    'extrinsicsCalibration', 'deviceMotion', 'longitudinalPlan', 'lateralManeuverPlan', 'carState', 'carOutput',
-                                   'driverMonitoringState', 'onroadEvents', 'driverAssistance'], poll='selfdriveState')
+                                   'driverMonitoringState', 'onroadEvents', 'driverAssistance', 'radarState'], poll='selfdriveState')
     self.pm = messaging.PubMaster(['carControl', 'controlsState'])
 
     # 준파일럿: 순정 크루즈(PCM) 차량에서 설정속도 자동 조절
@@ -209,6 +209,7 @@ class Controls:
     CC.cruiseControl.resume = CC.enabled and CS.cruiseState.standstill and not self.sm['longitudinalPlan'].shouldStop
     if self.jp_speed is not None:
       self.jp_speed.has_lead = bool(self.sm['longitudinalPlan'].hasLead)
+      self.jp_speed.lead = self.sm['radarState'].leadOne if self.sm.valid['radarState'] else None
       jp_target = self.jp_speed.update(CS, self.sm['modelV2'])  # 운전자 설정속도 기억을 위해 항상 호출
       CC.cruiseControl.junpilotTargetSpeed = float(jp_target) if CC.enabled else 0.0
       base_gap = int(self.jp_speed.settings.get("follow_gap", 0))  # 0이면 차간거리 건드리지 않음
