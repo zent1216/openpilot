@@ -33,7 +33,8 @@ DEBUG_PATH = os.getenv("JUNPILOT_SPEED_DEBUG", "/dev/shm/junpilot_speed.json" if
 LEAD_THW = {1: 1.0, 2: 1.2, 3: 1.5}  # 앞차 근접 감속 기준 (초)
 LEAD_CLOSING = 0.3                   # m/s, 이보다 빨리 가까워질 때만
 LEAD_BELOW = 3 * KPH                 # 앞차 속도보다 이만큼 낮게
-CUTIN_BELOW = 5 * KPH                # 끼어들기: 우리·끼어드는 차 중 느린 쪽보다 이만큼 낮게
+CUTIN_BELOW = 3 * KPH                # 끼어들기: 끼어드는 차보다 이만큼 낮게
+CUTIN_SAME_SPEED = 5 * KPH           # 끼어드는 차가 우리보다 이만큼 이상 느릴 때만 (가까우면 예외)
 LEAD_OPENING = 0.5                   # m/s, 이보다 빨리 멀어지면 '벌어짐'
 LEAD_RELEASE_THW = 0.4               # 기준보다 이만큼 멀어지면 풀기
 LEAD_RELEASE_TIME = 2.0              # 벌어짐이 이만큼 이어지면 풀기
@@ -41,8 +42,7 @@ LEAD_STEP = 5 * KPH                  # 설정속도는 이 단위로만 내림 (
 ASSIST_MIN_SPEED = 20 * KPH
 DRIVER_ASSIST_PAUSE = 20.0           # 운전자가 크루즈 속도 버튼을 누르면 이만큼 앞차·끼어들기 감속 안 함
 GAS_ASSIST_PAUSE = 5.0               # 가속 페달을 떼고 이만큼
-CUTIN_FASTER_IGNORE = 3 * KPH        # 끼어드는 차가 우리보다 이만큼 빠르면 무시 (가까우면 예외)
-CUTIN_NEAR = 12.0                    # m          # 이보다 느리면 순정이 알아서 함 (설정속도 최저 30km/h)
+CUTIN_NEAR = 12.0                    # m, 이보다 가까우면 속도와 상관없이 감속
 
 RELEASE_MARGIN = 3 * KPH  # 제한이 이만큼 넉넉해져야 속도를 다시 올림
 RELEASE_TIME = 1.0
@@ -83,6 +83,8 @@ class SpeedPlanner:
     self.lead_lim = math.inf
     self.cut_lim = math.inf
     self.assist_off_until = 0.0
+    self.camera_override: int | None = None  # 운전자가 직접 바꾼 단속 제한속도(km/h): 그 단속 동안 감속 안 함
+    self.camera_navi = 0
     self.lead_open_t: float | None = None
     self.learner: CruiseLearner | None = None
     self.learned = ""
@@ -120,6 +122,9 @@ class SpeedPlanner:
       self.driver_pending_t = now
       # 운전자가 직접 속도를 바꾸면 앞차·끼어들기 감속은 잠시 쉼 (예: 앞차 가까운데 일부러 올렸더니 다시 끌어내림)
       self.assist_off_until = now + DRIVER_ASSIST_PAUSE
+      # 단속 감속 중에 운전자가 속도를 바꾸면 이번 단속(같은 제한속도) 동안은 운전자 값을 따름
+      if math.isfinite(self.camera_limit):
+        self.camera_override = self.camera_navi
     if getattr(CS, "gasPressed", False):
       self.assist_off_until = max(self.assist_off_until, now + GAS_ASSIST_PAUSE)
     if self.driver_pending_t is not None and now - self.driver_pending_t > 0.6:
@@ -162,7 +167,10 @@ class SpeedPlanner:
     navi_kind = int(getattr(CS, "junpilotNaviKind", 0)) if navi > 0 else 0
     if navi <= 0 and s.get("nmirror", True):
       navi, navi_kind = limit_from(read_road_limit(), CS.vEgo, style["decel"])
-    if s.get("navi_slowdown", True) and navi > 0:
+    if navi <= 0 or round(navi * 3.6) != self.camera_override:
+      self.camera_override = None
+    self.camera_navi = round(navi * 3.6)
+    if s.get("navi_slowdown", True) and navi > 0 and self.camera_override is None:
       learned_margin = self.learner.margin_adj() if self.learner is not None else 0.0
       self.camera_limit = navi + (s.get("navi_margin", 0) + learned_margin) * KPH
 
@@ -229,15 +237,16 @@ class SpeedPlanner:
     """끼어들기 감지 순간의 값으로 고정 (계속 다시 계산하면 우리 속도 따라 끝없이 내려감)."""
     v_cut = float(getattr(CS, "junpilotCutInSpeed", 0.0) or 0.0)
     d_cut = float(getattr(CS, "junpilotCutInDist", 0.0) or 0.0)
-    if v_cut > CS.vEgo + CUTIN_FASTER_IGNORE and d_cut > CUTIN_NEAR:
-      v_cut = 0.0  # 우리보다 빠른 차가 멀찍이 들어오면 줄일 필요 없음
+    if v_cut > CS.vEgo - CUTIN_SAME_SPEED and d_cut > CUTIN_NEAR:
+      v_cut = 0.0  # 우리와 비슷하거나 빠른 차가 멀찍이 들어오면 줄일 필요 없음 (들어오면 순정이 따라감)
     if self.clock() < self.assist_off_until:
       v_cut = 0.0
     if not s.get("cutin_slowdown", True) or v_cut <= 0 or CS.vEgo < ASSIST_MIN_SPEED or not CS.cruiseState.enabled:
       self.cut_lim = math.inf
       return math.inf
     if not math.isfinite(self.cut_lim):
-      self.cut_lim = max(math.floor((min(CS.vEgo, v_cut) - CUTIN_BELOW) / LEAD_STEP) * LEAD_STEP, MIN_TARGET)
+      # 끼어드는 차 속도보다 조금만 낮게 (예전: 5km/h 단위로 내림해서 10km/h 넘게 줄 때가 있었음)
+      self.cut_lim = max(math.floor((min(CS.vEgo, v_cut) - CUTIN_BELOW) * 3.6) / 3.6, MIN_TARGET)
     return self.cut_lim
 
   def _write_debug(self, now: float):

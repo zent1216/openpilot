@@ -212,6 +212,7 @@ class Controls:
       self.jp_speed.lead = self.sm['radarState'].leadOne if self.sm.valid['radarState'] else None
       jp_target = self.jp_speed.update(CS, self.sm['modelV2'])  # 운전자 설정속도 기억을 위해 항상 호출
       CC.cruiseControl.junpilotTargetSpeed = float(jp_target) if CC.enabled else 0.0
+      CC.cruiseControl.junpilotTurnYieldSpeed = float(self.jp_speed.settings.get("turn_yield_kph", 30)) / 3.6
       base_gap = int(self.jp_speed.settings.get("follow_gap", 0))  # 0이면 차간거리 건드리지 않음
       has_lead = self.sm['longitudinalPlan'].hasLead
       learn = self.jp_speed.learner

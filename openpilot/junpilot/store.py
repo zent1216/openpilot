@@ -42,6 +42,8 @@ JUNPILOT_SETTINGS = {
   "cutin_slowdown": {"type": "bool", "default": True, "label": "옆 차 끼어들기 감속", "ready": True},
   "cruise_learn": {"type": "bool", "default": True, "label": "스마트크루즈 자가 학습", "ready": True},
   "curve_learn": {"type": "bool", "default": True, "label": "커브 자가 학습", "ready": True},
+  "turn_yield_kph": {"type": "int", "default": 30, "min": 0, "max": 40,
+                     "label": "저속 회전 양보 속도 (km/h)", "ready": True},
   "steer_timing": {"type": "choice", "default": 2, "choices": ["더 일찍", "조금 일찍", "기본", "조금 늦게", "더 늦게"],
                    "label": "조향 시점 · 커브를 일찍 파고들면 늦게", "ready": True},
 }

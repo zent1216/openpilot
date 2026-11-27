@@ -203,9 +203,9 @@ def test_cutin_latched(planner):
   p.update(cs(80), model(80 * KPH))
   c.junpilotCutInSpeed = 50 * KPH
   t = step(p, clk, c, model(60 * KPH))
-  assert abs(t * 3.6 - 45) < 0.1  # floor((50-5)/5)*5
+  assert abs(t * 3.6 - 47) < 0.1  # 끼어드는 차(50)보다 3 낮게
   c.vEgo = 50 * KPH  # 우리가 느려져도 더 내려가지 않음
-  assert abs(step(p, clk, c, model(50 * KPH)) * 3.6 - 45) < 0.1
+  assert abs(step(p, clk, c, model(50 * KPH)) * 3.6 - 47) < 0.1
   store.set_settings({"cutin_slowdown": False})
   p.settings_t = -10
   c.junpilotCutInSpeed = 0.0
@@ -235,3 +235,31 @@ def test_faster_cutin_ignored(planner):
   p.update(cs(80), model(80 * KPH))
   c.junpilotCutInSpeed, c.junpilotCutInDist = 90 * KPH, 30.0
   assert abs(step(p, clk, c, model(70 * KPH)) * 3.6 - 80) < 0.1
+
+
+def test_similar_speed_cutin_ignored(planner):
+  p, clk = planner
+  c = cs(80, v_kph=70)
+  p.update(cs(80), model(80 * KPH))
+  c.junpilotCutInSpeed, c.junpilotCutInDist = 67 * KPH, 25.0  # 비슷한 속도로 멀찍이
+  assert abs(step(p, clk, c, model(70 * KPH)) * 3.6 - 80) < 0.1
+  c.junpilotCutInDist = 8.0  # 바짝 들어오면 감속
+  assert step(p, clk, c, model(70 * KPH)) * 3.6 < 70
+
+
+def test_driver_raise_during_camera_kept(planner):
+  p, clk = planner
+  c = cs(80, v_kph=75)
+  p.update(cs(80), model(80 * KPH))
+  c.junpilotNaviLimit, c.junpilotNaviKind = 80 * KPH, 2
+  store.set_settings({"navi_margin": -5})
+  p.settings_t = -10
+  assert abs(step(p, clk, c, model(75 * KPH)) * 3.6 - 75) < 0.1
+  # 운전자가 80으로 올림 → 이번 구간단속 동안은 80 유지
+  c.buttonEvents = [NS(type="accelCruise", pressed=True)]
+  step(p, clk, c, model(75 * KPH))
+  c.buttonEvents = []
+  c.cruiseState.speed = 80 * KPH
+  for _ in range(20):
+    t = step(p, clk, c, model(78 * KPH))
+  assert abs(t * 3.6 - 80) < 0.1
