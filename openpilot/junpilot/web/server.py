@@ -507,6 +507,12 @@ def make_handler(app: App):
           app.gdrive_login = gdrive.Login()
           app.gdrive_login.start()
           return self._send(200, app.gdrive_login.status())
+        if path == "/api/gdrive/client":
+          try:
+            gdrive.set_client(str(body.get("client_id", "")), str(body.get("client_secret", "")))
+          except ValueError as e:
+            return self._send(400, {"error": str(e)})
+          return self._send(200, {"ok": True})
         if path == "/api/gdrive/logout":
           gdrive.disconnect()
           return self._send(200, {"ok": True})

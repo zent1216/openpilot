@@ -28,7 +28,21 @@ CHUNK = 8 * 1024 * 1024  # 256KB의 배수
 TOKEN_FILE = "gdrive.json"
 
 
+CLIENT_STORE = "google_client.json"  # 관리 페이지에서 입력한 값 (콤마에만 저장)
+
+
+def set_client(client_id: str, client_secret: str):
+  client_id, client_secret = client_id.strip(), client_secret.strip()
+  if not client_id.endswith(".apps.googleusercontent.com") or not client_secret:
+    raise ValueError("클라이언트 ID나 보안 비밀번호가 올바르지 않아요.")
+  store.save(CLIENT_STORE, {"client_id": client_id, "client_secret": client_secret})
+  _token_cache.clear()
+
+
 def client() -> dict | None:
+  c = store.load(CLIENT_STORE, {})
+  if c.get("client_id") and c.get("client_secret"):
+    return c
   try:
     with open(CLIENT_FILE) as f:
       c = json.load(f)

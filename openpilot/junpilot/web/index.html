@@ -447,7 +447,10 @@ async function loadGdrive() {
   const d = await api('/api/gdrive');
   const L = d.login || {};
   let h;
-  if (!d.client) h = '<small>구글 로그인용 앱 등록 값이 아직 없어요. 개발자가 google_client.json을 넣어야 해요.</small>';
+  if (!d.client) h = `<p><small>처음 한 번만 구글 클라우드에서 만든 클라이언트 값을 넣어 주세요. 콤마에만 저장돼요.</small></p>
+      <label class="k">클라이언트 ID</label><input id="gd-cid" autocomplete="off">
+      <label class="k">클라이언트 보안 비밀번호</label><input id="gd-sec" autocomplete="off">
+      <button class="b" style="margin-top:10px" onclick="gdSaveClient()">저장</button>`;
   else if (d.connected) h = row('상태', '<span class="pill ok">연결됨</span>')
       + '<p><small>주행기록에서 "드라이브로 보내기"를 누르면 내 구글 드라이브의 <b>준파일럿</b> 폴더에 올라가요.</small></p>'
       + '<button class="b ghost" onclick="gdLogout()">연결 해제</button>';
@@ -467,6 +470,12 @@ async function loadGdrive() {
       + '<button class="b" onclick="gdLogin()">구글 로그인</button>';
   }
   $('#gd-box').innerHTML = h;
+}
+async function gdSaveClient() {
+  try {
+    await post('/api/gdrive/client', {client_id: $('#gd-cid').value, client_secret: $('#gd-sec').value});
+    note('저장했어요. 이제 구글 로그인을 눌러 주세요.', 'ok'); loadGdrive();
+  } catch {}
 }
 async function gdLogin() { try { await post('/api/gdrive/login'); loadGdrive(); } catch {} }
 async function gdLogout() {

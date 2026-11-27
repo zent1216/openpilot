@@ -64,3 +64,13 @@ def test_denied(tmp_path, monkeypatch):
 def test_no_client(tmp_path, monkeypatch):
   monkeypatch.setattr(gdrive, "CLIENT_FILE", str(tmp_path / "none.json"))
   assert gdrive.client() is None and not gdrive.connected()
+
+
+def test_set_client(tmp_path, monkeypatch):
+  import pytest
+  monkeypatch.setenv("JUNPILOT_DIR", str(tmp_path))
+  monkeypatch.setattr(gdrive, "CLIENT_FILE", str(tmp_path / "none.json"))
+  with pytest.raises(ValueError):
+    gdrive.set_client("bad", "x")
+  gdrive.set_client(" a.apps.googleusercontent.com ", "s")
+  assert gdrive.client()["client_id"] == "a.apps.googleusercontent.com"
