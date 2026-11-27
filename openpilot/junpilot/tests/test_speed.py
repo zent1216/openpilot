@@ -63,9 +63,13 @@ def test_curve_slows_then_restores_driver_speed(planner):
   # 시스템이 설정속도를 내린 상태(70)에서도 운전자 속도 100은 기억
   for _ in range(10):
     step(p, clk, cs(70), model(70 * KPH, radius=150))
-  # 커브가 끝나면 잠시 뒤 100으로 복귀
+  # 커브가 끝나면 잠시 뒤 '지금 속도+10'까지만 올리고, 차가 빨라지면 따라서 100까지 복귀 (버튼 한꺼번에 안 누름)
   vals = [step(p, clk, cs(70), model(70 * KPH)) for _ in range(40)]
-  assert vals[0] < 100 * KPH and vals[-1] == pytest.approx(100 * KPH)
+  assert vals[0] < 100 * KPH and vals[-1] == pytest.approx(80 * KPH)
+  for v in (80, 90, 100):
+    for _ in range(30):
+      t = step(p, clk, cs(70, v_kph=v), model(v * KPH))
+  assert t == pytest.approx(100 * KPH)
 
 
 def test_far_curve_allows_more_speed_than_near_curve(planner):
@@ -176,11 +180,11 @@ def test_lead_close_slows_and_releases(planner):
   p.lead = lead(12.5, 36, 40)
   t = step(p, clk, c, model(40 * KPH))
   assert abs(t * 3.6 - 30) < 0.1
-  # 충분히 멀어지면(1.2+0.4초 이상) 원래 속도로
+  # 충분히 멀어지면(1.2+0.4초 이상) 풀림: 지금 속도(40)+10까지 먼저
   p.lead = lead(25, 45, 40)
   for _ in range(40):
     t = step(p, clk, c, model(40 * KPH))
-  assert abs(t * 3.6 - 80) < 0.1
+  assert abs(t * 3.6 - 50) < 0.1
 
 
 def test_lead_far_or_not_closing_untouched(planner):
@@ -207,4 +211,4 @@ def test_cutin_latched(planner):
   c.junpilotCutInSpeed = 0.0
   for _ in range(40):
     t = step(p, clk, c, model(50 * KPH))
-  assert abs(t * 3.6 - 80) < 0.1
+  assert abs(t * 3.6 - 60) < 0.1

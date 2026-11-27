@@ -42,6 +42,7 @@ ASSIST_MIN_SPEED = 20 * KPH          # 이보다 느리면 순정이 알아서 �
 
 RELEASE_MARGIN = 3 * KPH  # 제한이 이만큼 넉넉해져야 속도를 다시 올림
 RELEASE_TIME = 1.0
+RETURN_AHEAD = 10 * KPH  # 올릴 때 지금 속도보다 이만큼 위까지만
 
 
 def curve_limit(v_ego: float, velocity: list[float], yaw_rate: list[float], distance: list[float],
@@ -162,17 +163,21 @@ class SpeedPlanner:
     want = max(min(self.driver_set, lim_curve, self.camera_limit, lim_lead, lim_cutin), MIN_TARGET)
 
     # 내릴 때는 바로, 올릴 때는 여유가 생기고 잠시 유지돼야 올림 (출렁임 방지)
+    # 다시 올릴 때는 한 번에 운전자 설정속도로 올리지 않고 '지금 속도 + RETURN_AHEAD'까지만:
+    # 버튼을 한꺼번에 많이 누르지 않고(먹통 방지), 차가 붙는 동안 조금씩 따라 올라감
     if self.target <= 0 or want < self.target:
       self.target = want
       self.release_t = None
-    elif want > self.target + RELEASE_MARGIN or want >= self.driver_set:
-      if self.release_t is None:
-        self.release_t = now
-      if now - self.release_t >= RELEASE_TIME:
-        self.target = want
-        self.release_t = None
     else:
-      self.release_t = None
+      up = min(want, max(CS.vEgo + RETURN_AHEAD, self.target))
+      if up > self.target + RELEASE_MARGIN or (up >= want and up > self.target):
+        if self.release_t is None:
+          self.release_t = now
+        if now - self.release_t >= RELEASE_TIME:
+          self.target = up
+          self.release_t = None
+      else:
+        self.release_t = None
 
     self.debug = {"driver_set": self.driver_set, "curve": lim_curve if math.isfinite(lim_curve) else 0.0,
                   "camera": self.camera_limit if math.isfinite(self.camera_limit) else 0.0, "target": self.target,
