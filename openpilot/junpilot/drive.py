@@ -53,11 +53,12 @@ class UploadJob:
     self.error = ""
     self.started = time.time()  # noqa: TID251  벽시계 시각(표시용)
     self.finished: float | None = None
+    self.link = ""  # 구글 로그인 방식일 때 올린 폴더 주소
 
   def status(self) -> dict:
     return {"bundle": self.bundle, "state": self.state, "error": self.error,
             "progress": round(100 * self.sent_bytes / self.total_bytes, 1),
-            "files": [n for n, _ in self.files], "started": self.started, "finished": self.finished}
+            "files": [n for n, _ in self.files], "started": self.started, "finished": self.finished, "link": self.link}
 
   def _send_bytes(self, cfg: dict, name: str, data_iter, total_parts: int):
     for part, chunk in enumerate(data_iter):
@@ -73,11 +74,37 @@ class UploadJob:
           time.sleep(2 * (attempt + 1))
       self.sent_bytes += len(chunk)
 
+  def _run_gdrive(self):
+    """구글 로그인으로 연결된 경우: 드라이브 API로 직접, '준파일럿/<묶음>' 폴더에 올림."""
+    from openpilot.junpilot import gdrive
+    root = gdrive.folder(gdrive.ROOT_FOLDER)
+    sub = gdrive.folder(self.bundle, root["id"])
+    self.link = sub.get("webViewLink", "")
+
+    def add(n):
+      self.sent_bytes += n
+    meta = json.dumps(self.meta, ensure_ascii=False, indent=2).encode()
+    gdrive.upload("meta.json", sub["id"], len(meta), [meta], add)
+    for name, path in self.files:
+      size = os.path.getsize(path)
+
+      def chunks(p=path):
+        with open(p, "rb") as f:
+          while b := f.read(gdrive.CHUNK):
+            yield b
+      gdrive.upload(name, sub["id"], size, chunks(), add)
+
   def run(self):
     cfg = get_config()
     try:
+      from openpilot.junpilot import gdrive
+      if gdrive.connected():
+        self.state = "전송 중"
+        self._run_gdrive()
+        self.state = "완료"
+        return
       if not cfg["url"] or not cfg["secret"]:
-        raise RuntimeError("구글 드라이브 연결 설정이 비어 있어요. 연결 탭에서 먼저 설정해 주세요.")
+        raise RuntimeError("구글 드라이브가 연결되어 있지 않아요. 연결 탭에서 구글 로그인을 해 주세요.")
       self.state = "전송 중"
       meta = json.dumps(self.meta, ensure_ascii=False, indent=2).encode()
       self._send_bytes(cfg, "meta.json", [meta], 1)

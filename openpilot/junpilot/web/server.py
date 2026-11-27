@@ -17,7 +17,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, unquote
 
-from openpilot.junpilot import store, drive, tracker
+from openpilot.junpilot import store, drive, gdrive, tracker
 from openpilot.junpilot.collector import Broadcaster, drives_dir
 from openpilot.junpilot.device import OFFICIAL_SETTINGS
 from openpilot.junpilot.setting_help import help_for
@@ -75,6 +75,7 @@ class App:
     self.fails = 0
     self.locked_until = 0.0
     self.job: drive.UploadJob | None = None
+    self.gdrive_login: gdrive.Login | None = None
     self._last_alert: str | None = None
     self.broadcaster = Broadcaster()
     self.collector = None  # 장치에서 main()이 설정
@@ -406,7 +407,8 @@ def make_handler(app: App):
       try:
         if path == "/api/status":
           return self._send(200, {"device": app.dev.info(), "onroad": app.dev.is_onroad(),
-                                  "drive": {"configured": bool(drive.get_config()["url"])},
+                                  "drive": {"configured": bool(drive.get_config()["url"]) or gdrive.connected(),
+                                            "google": gdrive.connected()},
                                   "nmirror": app.nmirror.status() if app.nmirror else None,
                                   "job": app.job.status() if app.job else None,
                                   "report": app.report_status(),
@@ -424,6 +426,9 @@ def make_handler(app: App):
           return self._send(200, tracker.load_drive(drives_dir(), path.rsplit("/", 1)[1]))
         if path == "/api/ai":
           return self._send(200, app.ai_summary())
+        if path == "/api/gdrive":
+          return self._send(200, {"client": gdrive.client() is not None, "connected": gdrive.connected(),
+                                  "login": app.gdrive_login.status() if app.gdrive_login else None})
         if path == "/api/cruise_learn":
           from openpilot.junpilot import cruise_learn
           return self._send(200, cruise_learn.describe())
@@ -496,6 +501,15 @@ def make_handler(app: App):
           return self._send(401, {"error": "기기 연결이 필요해요."})
         if path == "/api/pair_code":
           return self._send(200, {"code": app.new_trusted_code(), "minutes": PAIR_WINDOW // 60})
+        if path == "/api/gdrive/login":
+          if app.gdrive_login:
+            app.gdrive_login.stop()
+          app.gdrive_login = gdrive.Login()
+          app.gdrive_login.start()
+          return self._send(200, app.gdrive_login.status())
+        if path == "/api/gdrive/logout":
+          gdrive.disconnect()
+          return self._send(200, {"ok": True})
         if path == "/api/dev_mode":
           # 개발자 모드: 구글 드라이브 전송·원본 로그 등 개발용 기능 보이기
           store.save("dev.json", {"on": bool(body.get("on"))})

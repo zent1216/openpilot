@@ -175,6 +175,8 @@
   <section id="tab-link" class="hidden">
     <div class="card dev-only">
       <h2>구글 드라이브 연결</h2>
+      <div id="gd-box"><small>불러오는 중…</small></div>
+      <details style="margin-top:12px"><summary class="k">예전 방식 (Apps Script 수신기)</summary>
       <p><small>Apps Script 수신기 주소와 비밀값을 입력해 주세요. 설치 방법은 저장소의 <b>openpilot/junpilot/apps_script/설치방법.md</b>를 참고해 주세요.</small></p>
       <label class="t">웹앱 주소</label>
       <input id="drv-url" placeholder="https://script.google.com/macros/s/…/exec">
@@ -182,6 +184,7 @@
       <input id="drv-secret" placeholder="비밀값">
       <div style="height:10px"></div>
       <button class="b" onclick="saveDrive()">저장</button>
+    </details>
     </div>
     <div class="card">
       <h2>새 기기 연결 코드</h2>
@@ -257,6 +260,7 @@ function go(t) {
   if (t === 'routes') { loadRoutes(); loadJob(); routeTimer = setInterval(loadJob, 2000); }
   if (t === 'settings') loadSettings();
   if (t === 'ai') loadAi();
+  if (t === 'link') loadGdrive();
 }
 document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { note(''); go(b.dataset.tab); });
 
@@ -346,6 +350,7 @@ async function loadJob() {
   $('#job').innerHTML = `<div class="top" style="display:flex;justify-content:space-between"><span class="name" style="font-size:12px">${esc(job.bundle)}</span><span class="pill ${cls}">${esc(job.state)}</span></div>
     <div class="bar"><i style="width:${job.progress}%"></i></div><small>${job.progress}% · 파일 ${job.files.length}개</small>
     ${job.error ? `<div class="msg err" style="margin-top:8px">${esc(job.error)}</div>` : ''}
+    ${job.link && job.state === '완료' ? `<p><a href="${esc(job.link)}" target="_blank">드라이브에서 폴더 열기</a></p>` : ''}
     ${job.state === '완료' ? '<div class="msg ok" style="margin-top:8px">Claude에게 "로그 올렸어"라고 알려 주세요.</div>' : ''}`;
 }
 
@@ -434,6 +439,39 @@ function confirmReset(what) {
     btn.addEventListener('contextmenu', e => e.preventDefault());
     box.querySelector('button').onclick = () => done(false);
   });
+}
+// 구글 드라이브: 구글 기기 로그인 (코드 + google.com/device)
+let gdTimer = null;
+async function loadGdrive() {
+  clearTimeout(gdTimer);
+  const d = await api('/api/gdrive');
+  const L = d.login || {};
+  let h;
+  if (!d.client) h = '<small>구글 로그인용 앱 등록 값이 아직 없어요. 개발자가 google_client.json을 넣어야 해요.</small>';
+  else if (d.connected) h = row('상태', '<span class="pill ok">연결됨</span>')
+      + '<p><small>주행기록에서 "드라이브로 보내기"를 누르면 내 구글 드라이브의 <b>준파일럿</b> 폴더에 올라가요.</small></p>'
+      + '<button class="b ghost" onclick="gdLogout()">연결 해제</button>';
+  else if (L.state === 'waiting') {
+    h = `<ol style="padding-left:18px;line-height:1.8">
+        <li>아래 <b>코드 복사</b>를 누르세요</li>
+        <li><b>구글 열기</b>를 누르고 로그인하세요</li>
+        <li>코드를 붙여넣고 <b>허용</b>을 누르세요</li></ol>
+      <div style="font-size:34px;font-weight:800;letter-spacing:4px;text-align:center;margin:10px 0">${esc(L.user_code)}</div>
+      <div class="grid2"><button class="b ghost" onclick="navigator.clipboard.writeText('${esc(L.user_code)}').then(() => note('코드를 복사했어요.', 'ok'))">코드 복사</button>
+      <button class="b" onclick="window.open('${esc(L.url)}', '_blank')">구글 열기</button></div>
+      <p><small>${Math.floor(L.expires_in / 60)}분 안에 해 주세요. 허용하면 이 화면이 저절로 '연결됨'으로 바뀌어요.</small></p>`;
+    gdTimer = setTimeout(() => { if (tab === 'link') loadGdrive().catch(() => {}); }, 3000);
+  } else {
+    h = (L.state === 'error' ? `<div class="msg err">${esc(L.error)}</div>` : '')
+      + '<p><small>구글 계정으로 로그인하면 주행기록을 내 드라이브에 바로 올릴 수 있어요. 준파일럿이 만든 파일만 접근해요.</small></p>'
+      + '<button class="b" onclick="gdLogin()">구글 로그인</button>';
+  }
+  $('#gd-box').innerHTML = h;
+}
+async function gdLogin() { try { await post('/api/gdrive/login'); loadGdrive(); } catch {} }
+async function gdLogout() {
+  if (!confirm('구글 드라이브 연결을 해제할까요?')) return;
+  try { await post('/api/gdrive/logout'); note('연결을 해제했어요.', 'ok'); loadGdrive(); } catch {}
 }
 async function loadCruiseLearn() {
   const d = await api('/api/cruise_learn');
