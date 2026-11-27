@@ -84,3 +84,12 @@ def test_park_disengages_quietly():
   assert EventName.buttonCancel in ev and EventName.wrongGear not in ev
   ev = names(ce.update(cs, cs, CC(False)))
   assert EventName.wrongGear in ev  # 꺼진 뒤엔 켜기만 막음 (경고 소리 없음)
+
+
+def test_neutral_disengages_quietly():
+  """인게이지 중 N단도 P단처럼 조용히 해제."""
+  ce = CarEvents(_cp())
+  cs = _cs()
+  cs.gearShifter = structs.CarState.GearShifter.neutral
+  ev = names(ce.update(cs, _cs(), CC(True)))
+  assert EventName.buttonCancel in ev and EventName.wrongGear not in ev
