@@ -120,6 +120,10 @@
       <button class="b ghost" id="app-dl" onclick="location.href='/app/junpilot.apk'">휴대폰 앱 내려받기</button>
       <p><small>오픈파일럿이 켜지지 않을 때는 주소 끝을 :8083 으로 바꿔 복구 페이지로 들어오세요.</small></p>
     </div>
+    <div class="card">
+      <h2>업데이트 내역</h2>
+      <div id="st-log"><small>불러오는 중…</small></div>
+    </div>
   </section>
 
   <!-- 주행기록 -->
@@ -256,7 +260,7 @@ function go(t) {
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   document.querySelectorAll('section[id^=tab-]').forEach(s => s.classList.toggle('hidden', s.id !== 'tab-' + t));
   clearInterval(routeTimer);
-  if (t === 'status') loadStatus();
+  if (t === 'status') { loadStatus(); loadChangelog().catch(() => {}); }
   if (t === 'routes') { loadRoutes(); loadJob(); routeTimer = setInterval(loadJob, 2000); }
   if (t === 'settings') loadSettings();
   if (t === 'ai') loadAi();
@@ -280,6 +284,18 @@ async function devTap() {
 }
 async function setDev(on) {
   try { await post('/api/dev_mode', {on}); devMode = on; applyDev(); note(on ? '개발자 모드를 켰어요.' : '개발자 모드를 껐어요.', 'ok'); loadStatus(); } catch {}
+}
+async function loadChangelog() {
+  const {items} = await api('/api/changelog');
+  if (!items.length) { $('#st-log').innerHTML = '<small>내역을 불러오지 못했어요.</small>'; return; }
+  let day = '', h = '';
+  for (const it of items) {
+    const d = new Date(it.time * 1000);
+    const ds = `${d.getMonth() + 1}월 ${d.getDate()}일`;
+    if (ds !== day) { h += `<div class="k" style="margin-top:10px">${ds}</div>`; day = ds; }
+    h += `<div style="padding:4px 0;border-bottom:1px solid #2a2d35"><small>${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}</small> ${esc(it.text)}</div>`;
+  }
+  $('#st-log').innerHTML = h + '<p><small>지금 설치된 버전까지의 내역이에요. 새 업데이트는 받고 재부팅하면 여기에 보여요.</small></p>';
 }
 async function loadStatus() {
   const s = await api('/api/status');

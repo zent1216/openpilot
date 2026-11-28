@@ -424,6 +424,10 @@ def make_handler(app: App):
           return self._send(200, {"drives": tracker.list_drives(drives_dir())})
         if path.startswith("/api/drives/"):
           return self._send(200, tracker.load_drive(drives_dir(), path.rsplit("/", 1)[1]))
+        if path == "/api/changelog":
+          from openpilot.common.basedir import BASEDIR
+          from openpilot.junpilot import changelog
+          return self._send(200, {"items": changelog.history(BASEDIR)})
         if path == "/api/ai":
           return self._send(200, app.ai_summary())
         if path == "/api/gdrive":
